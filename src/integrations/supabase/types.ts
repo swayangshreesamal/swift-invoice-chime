@@ -14,7 +14,113 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      invoices: {
+        Row: {
+          amount: number
+          client_email: string
+          client_name: string
+          created_at: string
+          description: string | null
+          due_date: string
+          id: string
+          invoice_date: string
+          paid_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          client_email: string
+          client_name: string
+          created_at?: string
+          description?: string | null
+          due_date: string
+          id?: string
+          invoice_date?: string
+          paid_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          client_email?: string
+          client_name?: string
+          created_at?: string
+          description?: string | null
+          due_date?: string
+          id?: string
+          invoice_date?: string
+          paid_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          paypal_subscription_id: string | null
+          plan: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id: string
+          paypal_subscription_id?: string | null
+          plan?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          paypal_subscription_id?: string | null
+          plan?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      reminders: {
+        Row: {
+          id: string
+          invoice_id: string
+          sent_at: string
+          stage: number
+          status: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          invoice_id: string
+          sent_at?: string
+          stage: number
+          status?: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          invoice_id?: string
+          sent_at?: string
+          stage?: number
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reminders_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
