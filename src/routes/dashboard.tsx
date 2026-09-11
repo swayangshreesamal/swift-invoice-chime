@@ -90,7 +90,10 @@ function Dashboard() {
       .from("invoices")
       .update({ status: "paid", paid_at: new Date().toISOString() })
       .eq("id", invoice.id);
-    if (error) return toast.error(error.message);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     toast.success(`${invoice.client_name} marked as paid`);
     refresh();
   }
@@ -100,13 +103,19 @@ function Dashboard() {
       .from("invoices")
       .update({ status: "unpaid", paid_at: null })
       .eq("id", invoice.id);
-    if (error) return toast.error(error.message);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     refresh();
   }
 
   async function remove(invoice: InvoiceRow) {
     const { error } = await supabase.from("invoices").delete().eq("id", invoice.id);
-    if (error) return toast.error(error.message);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     toast.success("Invoice deleted");
     refresh();
   }
