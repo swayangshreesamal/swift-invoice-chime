@@ -260,7 +260,11 @@ function Dashboard() {
 
                 {sent.length > 0 ? (
                   <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                    Reminders sent: {sent.map((r) => `${r.stage}d`).reverse().join(" · ")}
+                    Reminders sent:{" "}
+                    {sent
+                      .map((r) => `${r.stage}d`)
+                      .reverse()
+                      .join(" · ")}
                   </p>
                 ) : null}
 
@@ -309,7 +313,10 @@ function Dashboard() {
             <p className="mt-1 text-sm text-muted-foreground">
               Pro is $19/month for unlimited invoices and reminders sent for you.
             </p>
-            <Link to="/pricing" className="btn-brand mt-3 block w-full py-3 text-center text-[14px]">
+            <Link
+              to="/pricing"
+              className="btn-brand mt-3 block w-full py-3 text-center text-[14px]"
+            >
               Upgrade to Pro – $19/month
             </Link>
           </div>

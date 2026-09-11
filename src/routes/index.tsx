@@ -36,7 +36,10 @@ function Landing() {
     <div className="min-h-screen w-full bg-background text-foreground">
       <SiteHeader
         right={
-          <Link to={user ? "/dashboard" : "/auth"} className="font-mono text-xs text-muted-foreground">
+          <Link
+            to={user ? "/dashboard" : "/auth"}
+            className="font-mono text-xs text-muted-foreground"
+          >
             {user ? "Dashboard" : "Log in"}
           </Link>
         }
@@ -110,7 +113,10 @@ function Landing() {
                 <li>Unlimited invoices</li>
                 <li>Automatic reminders</li>
               </ul>
-              <Link to="/pricing" className="btn-brand mt-4 block w-full py-2.5 text-center text-[13px]">
+              <Link
+                to="/pricing"
+                className="btn-brand mt-4 block w-full py-2.5 text-center text-[13px]"
+              >
                 Upgrade to Pro
               </Link>
             </div>

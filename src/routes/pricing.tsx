@@ -25,14 +25,27 @@ export const Route = createFileRoute("/pricing")({
   component: Pricing,
 });
 
-const PLAN_ID = "P-0T982194PC572172WNKRMHEQ";
+const PLAN_ID = "P-7PU30395VJ1727507NKR4O6I";
 const CONTAINER_ID = `paypal-button-container-${PLAN_ID}`;
 const SDK_SRC =
   "https://www.paypal.com/sdk/js?client-id=BAAfpgWRrENfXXGQJoTHPUKITKxodhLascJ8diMsirEGX-Ir_5LzF1w2X-QVATX404EVMEfD3nuFE0r24o&vault=true&intent=subscription";
 
 declare global {
   interface Window {
-    paypal?: any;
+    paypal?: {
+      Buttons: (options: {
+        style?: Record<string, string>;
+        createSubscription: (
+          data: unknown,
+          actions: { subscription: { create: (options: { plan_id: string }) => Promise<string> } },
+        ) => Promise<string>;
+        onApprove: (data: { subscriptionID: string }) => Promise<void> | void;
+        onCancel?: (data?: unknown) => void;
+        onError?: (err: unknown) => void;
+      }) => {
+        render: (container: string) => void;
+      };
+    };
   }
 }
 
@@ -59,12 +72,12 @@ function Pricing() {
       const node = document.getElementById(CONTAINER_ID);
       if (!node) return;
       rendered.current = true;
+      node.innerHTML = "";
       window.paypal
         .Buttons({
           style: { shape: "rect", color: "gold", layout: "vertical", label: "subscribe" },
-          createSubscription: (_data: unknown, actions: any) =>
-            actions.subscription.create({ plan_id: PLAN_ID }),
-          onApprove: async (data: any) => {
+          createSubscription: (_data, actions) => actions.subscription.create({ plan_id: PLAN_ID }),
+          onApprove: async (data) => {
             const { error } = await supabase
               .from("profiles")
               .update({ plan: "pro", paypal_subscription_id: data.subscriptionID })
@@ -77,7 +90,19 @@ function Pricing() {
             toast.success("You're on Pro — unlimited invoices unlocked.");
             navigate({ to: "/dashboard" });
           },
-          onError: () => toast.error("PayPal couldn't complete that. Please try again."),
+          onCancel: () => {
+            toast.info("PayPal subscription checkout was cancelled.");
+          },
+          onError: (err: unknown) => {
+            console.error("[PayPal Error Details]:", err);
+            const errMessage =
+              err instanceof Error
+                ? err.message
+                : typeof err === "string"
+                  ? err
+                  : "PayPal couldn't complete that. Please try again.";
+            toast.error(errMessage);
+          },
         })
         .render(`#${CONTAINER_ID}`);
     }
@@ -101,7 +126,10 @@ function Pricing() {
     <div className="min-h-screen bg-background text-foreground">
       <SiteHeader
         right={
-          <Link to={user ? "/dashboard" : "/auth"} className="font-mono text-xs text-muted-foreground">
+          <Link
+            to={user ? "/dashboard" : "/auth"}
+            className="font-mono text-xs text-muted-foreground"
+          >
             {user ? "Dashboard" : "Log in"}
           </Link>
         }

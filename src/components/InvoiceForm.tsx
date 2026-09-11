@@ -157,7 +157,11 @@ export function InvoiceForm({
           {busy ? "Saving…" : existing ? "Save changes" : "Save & start reminders"}
         </button>
         {onCancel ? (
-          <button type="button" onClick={onCancel} className="btn-quiet mt-1 px-4 py-3.5 text-[15px]">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="btn-quiet mt-1 px-4 py-3.5 text-[15px]"
+          >
             Cancel
           </button>
         ) : null}

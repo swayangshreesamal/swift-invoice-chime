@@ -4,9 +4,9 @@ Build a simple and clean website called **PayReminder**.
 
 **What the website does:**
 
-PayReminder helps freelancers and small business owners get paid faster.  
+PayReminder helps freelancers and small business owners get paid faster.
 
-Many freelancers send invoices but clients don’t pay on time. They feel awkward chasing the money.  
+Many freelancers send invoices but clients don’t pay on time. They feel awkward chasing the money.
 
 This tool automatically sends polite reminder emails so the freelancer doesn’t have to do it manually.
 
@@ -61,49 +61,40 @@ This tool automatically sends polite reminder emails so the freelancer doesn’t
 When the user clicks “Upgrade to Pro – $19/month”, show this exact PayPal subscription button:
 
 ```html
-
 <div id="paypal-button-container-P-0T982194PC572172WNKRMHEQ"></div>
 
-<script src="https://www.paypal.com/sdk/js?client-id=BAAfpgWRrENfXXGQJoTHPUKITKxodhLascJ8diMsirEGX-Ir_5LzF1w2X-QVATX404EVMEfD3nuFE0r24o&vault=true&intent=subscription" data-sdk-integration-source="button-factory"></script>
+<script
+  src="https://www.paypal.com/sdk/js?client-id=BAAfpgWRrENfXXGQJoTHPUKITKxodhLascJ8diMsirEGX-Ir_5LzF1w2X-QVATX404EVMEfD3nuFE0r24o&vault=true&intent=subscription"
+  data-sdk-integration-source="button-factory"
+></script>
 
 <script>
-
-  paypal.Buttons({
-
+  paypal
+    .Buttons({
       style: {
+        shape: "rect",
 
-          shape: 'rect',
+        color: "gold",
 
-          color: 'gold',
+        layout: "vertical",
 
-          layout: 'vertical',
-
-          label: 'subscribe'
-
+        label: "subscribe",
       },
 
-      createSubscription: function(data, actions) {
-
+      createSubscription: function (data, actions) {
         return actions.subscription.create({
-
           /* Creates the subscription */
 
-          plan_id: 'P-0T982194PC572172WNKRMHEQ'
-
+          plan_id: "P-0T982194PC572172WNKRMHEQ",
         });
-
       },
 
-      onApprove: function(data, actions) {
-
+      onApprove: function (data, actions) {
         alert(data.subscriptionID); // You can add optional success message for the subscriber here
-
-      }
-
-  }).render('#paypal-button-container-P-0T982194PC572172WNKRMHEQ'); // Renders the PayPal button
-
+      },
+    })
+    .render("#paypal-button-container-P-0T982194PC572172WNKRMHEQ"); // Renders the PayPal button
 </script>
-
 ```
 
 **Design requirements:**
