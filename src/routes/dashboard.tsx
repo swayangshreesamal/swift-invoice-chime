@@ -7,6 +7,7 @@ import { InvoiceForm, type InvoiceRow } from "@/components/InvoiceForm";
 import { SiteHeader } from "@/components/SiteHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { daysOverdue, formatDate, formatMoney } from "@/lib/format";
+import { triggerBatchReminders, triggerManualReminder } from "@/lib/reminder-actions";
 import { useAuth } from "@/lib/use-auth";
 
 export const Route = createFileRoute("/dashboard")({
@@ -35,6 +36,8 @@ function Dashboard() {
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<InvoiceRow | null>(null);
+  const [sendingKey, setSendingKey] = useState<string | null>(null);
+  const [checkingBatch, setCheckingBatch] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth" });
@@ -120,6 +123,42 @@ function Dashboard() {
     refresh();
   }
 
+  async function handleSendSingle(invoice: InvoiceRow, stage: 3 | 7 | 14) {
+    const key = `${invoice.id}-${stage}`;
+    setSendingKey(key);
+    try {
+      const res = await triggerManualReminder({ data: { invoiceId: invoice.id, stage } });
+      if (!res.success) {
+        toast.error(res.error || "Could not send reminder. Check email configuration.");
+        return;
+      }
+      toast.success(`${stage}d reminder successfully emailed to ${invoice.client_email}`);
+      refresh();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to send reminder");
+    } finally {
+      setSendingKey(null);
+    }
+  }
+
+  async function handleBatchCheck() {
+    setCheckingBatch(true);
+    toast.info("Scanning invoices and dispatching pending reminders…");
+    try {
+      const res = await triggerBatchReminders();
+      if (res.sentCount > 0) {
+        toast.success(`Sent ${res.sentCount} overdue reminder email(s)!`);
+      } else {
+        toast.info(`Checked ${res.checkedCount} invoice(s). No new reminders needed.`);
+      }
+      refresh();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Error checking reminders");
+    } finally {
+      setCheckingBatch(false);
+    }
+  }
+
   if (loading || !user) {
     return (
       <div className="min-h-screen bg-background">
@@ -166,20 +205,32 @@ function Dashboard() {
 
         <div className="mt-4 flex items-baseline justify-between">
           <h2 className="font-display text-xl font-semibold tracking-tight">Your invoices</h2>
-          {!adding && !editing ? (
-            <button
-              className="font-mono text-xs text-brand"
-              onClick={() => {
-                if (atFreeLimit) {
-                  toast.error("Free plan holds 3 invoices — upgrade to Pro for unlimited.");
-                  return;
-                }
-                setAdding(true);
-              }}
-            >
-              + Add invoice
-            </button>
-          ) : null}
+          <div className="flex items-center gap-3">
+            {unpaid.length > 0 ? (
+              <button
+                type="button"
+                disabled={checkingBatch}
+                className="font-mono text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                onClick={handleBatchCheck}
+              >
+                {checkingBatch ? "Checking…" : "⚡ Check & send reminders"}
+              </button>
+            ) : null}
+            {!adding && !editing ? (
+              <button
+                className="font-mono text-xs text-brand"
+                onClick={() => {
+                  if (atFreeLimit) {
+                    toast.error("Free plan holds 3 invoices — upgrade to Pro for unlimited.");
+                    return;
+                  }
+                  setAdding(true);
+                }}
+              >
+                + Add invoice
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {adding ? (
@@ -266,6 +317,55 @@ function Dashboard() {
                       .reverse()
                       .join(" · ")}
                   </p>
+                ) : null}
+
+                {!isPaid ? (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/50 pt-2.5">
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      Send email reminder:
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={sendingKey === `${invoice.id}-3`}
+                        onClick={() => handleSendSingle(invoice, 3)}
+                        className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors disabled:opacity-50 ${
+                          sent.some((r) => r.stage === 3)
+                            ? "border-brand/40 bg-brand-soft/40 text-brand font-medium"
+                            : "border-border hover:bg-muted text-foreground"
+                        }`}
+                        title="3 days overdue reminder (Polite)"
+                      >
+                        {sendingKey === `${invoice.id}-3` ? "Sending…" : "3d polite"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={sendingKey === `${invoice.id}-7`}
+                        onClick={() => handleSendSingle(invoice, 7)}
+                        className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors disabled:opacity-50 ${
+                          sent.some((r) => r.stage === 7)
+                            ? "border-amber-500/40 bg-amber-500/10 text-amber-600 font-medium"
+                            : "border-border hover:bg-muted text-foreground"
+                        }`}
+                        title="7 days overdue reminder (Firmer)"
+                      >
+                        {sendingKey === `${invoice.id}-7` ? "Sending…" : "7d firmer"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={sendingKey === `${invoice.id}-14`}
+                        onClick={() => handleSendSingle(invoice, 14)}
+                        className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors disabled:opacity-50 ${
+                          sent.some((r) => r.stage === 14)
+                            ? "border-destructive/40 bg-destructive/10 text-destructive font-medium"
+                            : "border-border hover:bg-muted text-foreground"
+                        }`}
+                        title="14 days overdue reminder (Final notice)"
+                      >
+                        {sendingKey === `${invoice.id}-14` ? "Sending…" : "14d final"}
+                      </button>
+                    </div>
+                  </div>
                 ) : null}
 
                 <div className="mt-3 flex gap-2">

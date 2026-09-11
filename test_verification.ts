@@ -214,3 +214,49 @@ test("PayPal Pro subscription configuration contract", () => {
   assert.equal(updatePayload.plan, "pro");
   assert.equal(updatePayload.paypal_subscription_id, "I-SUB123456");
 });
+
+test("Reminder email templates - renders 3d, 7d, and 14d templates with correct tone and data", async () => {
+  const { renderReminderEmail } = await import("./src/lib/email-service.server.ts");
+
+  // Stage 3: Polite
+  const stage3 = renderReminderEmail({
+    clientName: "Acme Studio",
+    clientEmail: "billing@acme.com",
+    amount: 1200,
+    dueDate: "2026-09-01",
+    description: "Design retainer",
+    stage: 3,
+    daysOverdue: 3,
+  });
+  assert.match(stage3.subject, /Friendly Reminder/i);
+  assert.match(stage3.html, /\$1,200/);
+  assert.match(stage3.text, /gentle reminder/i);
+
+  // Stage 7: Firmer
+  const stage7 = renderReminderEmail({
+    clientName: "Acme Studio",
+    clientEmail: "billing@acme.com",
+    amount: 1200,
+    dueDate: "2026-09-01",
+    description: "Design retainer",
+    stage: 7,
+    daysOverdue: 7,
+  });
+  assert.match(stage7.subject, /Second Notice.*7 days/i);
+  assert.match(stage7.html, /Second Notice · 7 Days Overdue/i);
+  assert.match(stage7.text, /following up on our previous notice/i);
+
+  // Stage 14: Final notice
+  const stage14 = renderReminderEmail({
+    clientName: "Acme Studio",
+    clientEmail: "billing@acme.com",
+    amount: 1200,
+    dueDate: "2026-09-01",
+    description: "Design retainer",
+    stage: 14,
+    daysOverdue: 14,
+  });
+  assert.match(stage14.subject, /FINAL NOTICE/i);
+  assert.match(stage14.html, /Final Notice · 14 Days Overdue/i);
+  assert.match(stage14.text, /urgent and final notice/i);
+});

@@ -46,6 +46,29 @@ function isH3SwallowedErrorBody(body: string): boolean {
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    const url = new URL(request.url);
+
+    // Automated cron endpoint triggered daily by Vercel or external scheduler
+    if (url.pathname === "/api/cron/reminders") {
+      try {
+        const { processAllOverdueReminders } = await import("./lib/reminder-runner.server");
+        const result = await processAllOverdueReminders();
+        return new Response(
+          JSON.stringify({ ok: true, timestamp: new Date().toISOString(), result }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err.message : String(err);
+        return new Response(JSON.stringify({ ok: false, error }), {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        });
+      }
+    }
+
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
