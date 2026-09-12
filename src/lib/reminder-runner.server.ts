@@ -69,6 +69,8 @@ export interface InvoiceCandidate {
   status?: string;
   payment_details?: string | null;
   freelancer_name?: string | null;
+  late_fee?: string | null;
+  client_notes?: string | null;
 }
 
 /**
@@ -90,12 +92,20 @@ export async function processAllOverdueReminders(
       const { data, error: invError } = await supabase
         .from("invoices")
         .select(
-          "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status, payment_details",
+          "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status, payment_details, late_fee, client_notes",
         )
         .eq("status", "unpaid");
 
       if (invError) {
-        console.error("[ReminderRunner] Error fetching invoices:", invError);
+        console.error("[ReminderRunner] Error fetching invoices with late_fee:", invError);
+        // Fallback without new columns if migration is pending
+        const { data: fallbackData } = await supabase
+          .from("invoices")
+          .select(
+            "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status, payment_details",
+          )
+          .eq("status", "unpaid");
+        invoices = (fallbackData ?? []) as InvoiceCandidate[];
       } else {
         invoices = (data ?? []) as InvoiceCandidate[];
       }
@@ -163,6 +173,7 @@ export async function processAllOverdueReminders(
         daysOverdue: overdue,
         freelancerName: inv.freelancer_name ?? null,
         paymentDetails: inv.payment_details ?? null,
+        lateFee: inv.late_fee ?? null,
       });
 
       if (emailRes.success) {
@@ -225,6 +236,10 @@ export interface ManualInvoicePayload {
   payment_details?: string | null;
   freelancerName?: string | null;
   freelancer_name?: string | null;
+  lateFee?: string | null;
+  late_fee?: string | null;
+  clientNotes?: string | null;
+  client_notes?: string | null;
 }
 
 /**
@@ -248,14 +263,15 @@ export async function sendManualInvoiceReminder(
   let userId = payload?.userId || payload?.user_id;
   let paymentDetails = (payload?.paymentDetails || payload?.payment_details || "").trim();
   let freelancerName = (payload?.freelancerName || payload?.freelancer_name || "").trim();
+  let lateFee = (payload?.lateFee || payload?.late_fee || "").trim();
 
   // If email or details were not passed in payload, query database for details
-  if (!clientEmail || !paymentDetails) {
+  if (!clientEmail || !paymentDetails || !lateFee) {
     try {
       const { data: inv, error: invError } = await supabase
         .from("invoices")
         .select(
-          "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status, payment_details",
+          "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status, payment_details, late_fee",
         )
         .eq("id", invoiceId)
         .maybeSingle();
@@ -268,6 +284,7 @@ export async function sendManualInvoiceReminder(
         if (!description) description = inv.description;
         if (!userId) userId = inv.user_id;
         if (!paymentDetails && inv.payment_details) paymentDetails = inv.payment_details;
+        if (!lateFee && (inv as any).late_fee) lateFee = (inv as any).late_fee;
       } else if (invError) {
         console.warn("[sendManualInvoiceReminder] Supabase query returned error:", invError.message);
       }
@@ -325,6 +342,7 @@ export async function sendManualInvoiceReminder(
     daysOverdue: Math.max(overdue, stage),
     freelancerName,
     paymentDetails,
+    lateFee,
   });
 
   if (!emailRes.success) {

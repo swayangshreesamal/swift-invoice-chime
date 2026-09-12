@@ -11,6 +11,8 @@ const invoiceSchema = z.object({
   due_date: z.string().min(1, "Due date is required"),
   description: z.string().trim().max(300).optional(),
   payment_details: z.string().trim().max(1000).optional(),
+  client_notes: z.string().trim().max(500).optional(),
+  late_fee: z.string().trim().max(120).optional(),
 });
 
 // 2. Auth schema as defined in auth.tsx
@@ -136,7 +138,12 @@ test("Financial calculations - formatMoney formats integers and decimals properl
 
 test("Financial calculations - daysOverdue calculates past and future dates correctly", () => {
   const today = new Date();
-  const formatYMD = (d: Date) => d.toISOString().slice(0, 10);
+  const formatYMD = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
 
   const pastDate = new Date(today);
   pastDate.setDate(today.getDate() - 7);
@@ -238,7 +245,7 @@ test("Reminder email templates - renders 3d, 7d, and 14d templates with correct 
   assert.match(stage3.html, /Jane Doe Design/);
   assert.match(stage3.html, /paypal\.me\/janedoe/);
   assert.match(stage3.html, /How &amp; Where to Pay|How & Where to Pay/);
-  assert.match(stage3.html, /Pay Online Now →/);
+  assert.match(stage3.html, /Pay via PayPal →|Pay Online Now →/);
   assert.match(stage3.text, /gentle reminder/i);
   assert.match(stage3.text, /Who to pay: Jane Doe Design/i);
   assert.match(stage3.text, /HOW TO PAY/i);
@@ -280,7 +287,7 @@ test("Reminder email templates - renders 3d, 7d, and 14d templates with correct 
   assert.match(stage14.html, /Immediate Settlement Instructions/i);
   assert.match(stage14.html, /Jane Doe Design/);
   assert.match(stage14.html, /pay\.stripe\.com\/inv_123/);
-  assert.match(stage14.html, /Pay Online Now →/);
+  assert.match(stage14.html, /Pay via Stripe →|Pay Online Now →/);
   assert.match(stage14.text, /urgent and final notice/i);
   assert.match(stage14.text, /Who to pay: Jane Doe Design/i);
   assert.match(stage14.text, /HOW TO PAY/i);
@@ -325,4 +332,74 @@ test("Reminder email templates - provides graceful fallback when payment details
   assert.match(email.html, /Please reply directly to this email to receive/i);
   assert.match(email.text, /Please reply directly to this email to receive/i);
 });
+
+test("Invoice validation - accepts optional client_notes and late_fee", () => {
+  const valid = {
+    client_name: "Acme Corp",
+    client_email: "billing@acme.com",
+    amount: 2500,
+    invoice_date: "2026-09-01",
+    due_date: "2026-09-15",
+    payment_details: "PayPal: https://paypal.me/acme",
+    client_notes: "Usually pays 5 days late; prefers UPI payment",
+    late_fee: "5% late fee ($125)",
+  };
+  const result = invoiceSchema.safeParse(valid);
+  assert.equal(result.success, true);
+
+  // Rejects excessively long notes (> 500 chars)
+  const tooLongNote = { ...valid, client_notes: "a".repeat(501) };
+  assert.equal(invoiceSchema.safeParse(tooLongNote).success, false);
+
+  // Rejects excessively long late fee (> 120 chars)
+  const tooLongFee = { ...valid, late_fee: "b".repeat(121) };
+  assert.equal(invoiceSchema.safeParse(tooLongFee).success, false);
+});
+
+test("Reminder email templates - renders multiple payment buttons when multiple payment options provided", async () => {
+  const { renderReminderEmail } = await import("./src/lib/email-service.server.ts");
+
+  const multiPayEmail = renderReminderEmail({
+    clientName: "Acme Studio",
+    clientEmail: "billing@acme.com",
+    amount: 1500,
+    dueDate: "2026-09-01",
+    stage: 3,
+    daysOverdue: 3,
+    freelancerName: "Alex Rivera Studio",
+    paymentDetails:
+      "1. PayPal: https://paypal.me/alexrivera\n2. Stripe: https://buy.stripe.com/abc123\n3. UPI: alex@upi",
+  });
+
+  // Should render both buttons
+  assert.match(multiPayEmail.html, /Pay via PayPal →/);
+  assert.match(multiPayEmail.html, /Pay via Stripe →/);
+  assert.match(multiPayEmail.html, /https:\/\/paypal\.me\/alexrivera/);
+  assert.match(multiPayEmail.html, /https:\/\/buy\.stripe\.com\/abc123/);
+  assert.match(multiPayEmail.text, /alex@upi/);
+});
+
+test("Reminder email templates - renders late fee notice in Stage 14 urgent notice", async () => {
+  const { renderReminderEmail } = await import("./src/lib/email-service.server.ts");
+
+  const stage14WithLateFee = renderReminderEmail({
+    clientName: "Acme Studio",
+    clientEmail: "billing@acme.com",
+    amount: 2000,
+    dueDate: "2026-09-01",
+    stage: 14,
+    daysOverdue: 14,
+    freelancerName: "Jane Doe Design",
+    paymentDetails: "Wire details: Routing #123456, Account #987654321",
+    lateFee: "5% late fee ($100)",
+  });
+
+  // HTML assertions
+  assert.match(stage14WithLateFee.html, /Late Fee Notice:/i);
+  assert.match(stage14WithLateFee.html, /5% late fee \(\$100\)/);
+
+  // Text assertions
+  assert.match(stage14WithLateFee.text, /LATE FEE NOTICE: A late fee of 5% late fee \(\$100\) applies/i);
+});
+
 

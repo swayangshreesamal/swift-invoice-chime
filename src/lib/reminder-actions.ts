@@ -19,6 +19,10 @@ const manualReminderSchema = z.object({
   payment_details: z.string().nullable().optional(),
   freelancerName: z.string().nullable().optional(),
   freelancer_name: z.string().nullable().optional(),
+  lateFee: z.string().nullable().optional(),
+  late_fee: z.string().nullable().optional(),
+  clientNotes: z.string().nullable().optional(),
+  client_notes: z.string().nullable().optional(),
 });
 
 export const triggerManualReminder = createServerFn({ method: "POST" })

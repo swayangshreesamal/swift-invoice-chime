@@ -14,6 +14,8 @@ export type InvoiceRow = {
   due_date: string;
   description: string | null;
   payment_details?: string | null;
+  client_notes?: string | null;
+  late_fee?: string | null;
   status: string;
 };
 
@@ -25,6 +27,8 @@ const schema = z.object({
   due_date: z.string().min(1, "Due date is required"),
   description: z.string().trim().max(300).optional(),
   payment_details: z.string().trim().max(1000).optional(),
+  client_notes: z.string().trim().max(500).optional(),
+  late_fee: z.string().trim().max(120).optional(),
 });
 
 function today() {
@@ -59,6 +63,8 @@ export function InvoiceForm({
   const [paymentDetails, setPaymentDetails] = useState(
     existing?.payment_details ?? defaultPaymentDetails ?? "",
   );
+  const [clientNotes, setClientNotes] = useState(existing?.client_notes ?? "");
+  const [lateFee, setLateFee] = useState(existing?.late_fee ?? "");
   const [busy, setBusy] = useState(false);
 
   async function submit(event: React.FormEvent) {
@@ -71,6 +77,8 @@ export function InvoiceForm({
       due_date: dueDate,
       description: description || undefined,
       payment_details: paymentDetails || undefined,
+      client_notes: clientNotes || undefined,
+      late_fee: lateFee || undefined,
     });
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Please check the form");
@@ -82,17 +90,23 @@ export function InvoiceForm({
       ...parsed.data,
       description: parsed.data.description ?? null,
       payment_details: parsed.data.payment_details ?? null,
+      client_notes: parsed.data.client_notes ?? null,
+      late_fee: parsed.data.late_fee ?? null,
     };
 
     let { error } = existing
       ? await supabase.from("invoices").update(values).eq("id", existing.id)
       : await supabase.from("invoices").insert({ ...values, user_id: userId });
 
-    // Resilient fallback: if the payment_details column migration is still propagating, save without the column
-    if (error && error.message?.includes("payment_details")) {
-      console.warn("Database column payment_details not found. Falling back to core columns...");
+    // Resilient fallback: if any new column is still propagating in Supabase cache, fallback to core fields
+    if (error && (error.message?.includes("client_notes") || error.message?.includes("late_fee") || error.message?.includes("payment_details"))) {
+      console.warn("Database column mismatch detected. Falling back cleanly...");
       const fallbackValues = { ...values };
-      delete (fallbackValues as any).payment_details;
+      delete (fallbackValues as any).client_notes;
+      delete (fallbackValues as any).late_fee;
+      if (error.message?.includes("payment_details")) {
+        delete (fallbackValues as any).payment_details;
+      }
       const retry = existing
         ? await supabase.from("invoices").update(fallbackValues).eq("id", existing.id)
         : await supabase.from("invoices").insert({ ...fallbackValues, user_id: userId });
@@ -197,7 +211,39 @@ export function InvoiceForm({
           placeholder="e.g. PayPal: https://paypal.me/yourname or UPI: yourname@okaxis or Bank: Wire Routing #123456, Acct #789012"
         />
         <p className="mt-1 text-[11px] text-muted-foreground">
-          Displayed in a prominent highlighted box in all 3d, 7d, and 14d reminder emails.
+          Displayed in a prominent highlighted box in reminder emails. Multiple payment links will each get a button.
+        </p>
+      </label>
+
+      {/* Late Fee Option */}
+      <label className="block">
+        <span className="text-xs font-medium text-muted-foreground">
+          Late fee policy <span className="opacity-70">(optional — mentioned in final 14-day notice)</span>
+        </span>
+        <input
+          className="field-paper mt-1"
+          value={lateFee}
+          onChange={(e) => setLateFee(e.target.value)}
+          placeholder="e.g. 5% late fee ($75) or $50 overdue fee"
+        />
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          If left blank, no late fee is mentioned. If filled, clearly warns client in the final notice.
+        </p>
+      </label>
+
+      {/* Private Client Notes */}
+      <label className="block">
+        <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+          <span>🔒 Private client notes <span className="opacity-70">(only visible to you)</span></span>
+        </span>
+        <input
+          className="field-paper mt-1"
+          value={clientNotes}
+          onChange={(e) => setClientNotes(e.target.value)}
+          placeholder="e.g. Prefers UPI; usually pays 10 days late; contact finance at accounting@client.com"
+        />
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Never sent to the client. Kept securely on your dashboard to help you remember client quirks.
         </p>
       </label>
       <div className="flex gap-2">

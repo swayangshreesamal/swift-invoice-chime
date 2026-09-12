@@ -38,10 +38,22 @@ function Dashboard() {
   const [editing, setEditing] = useState<InvoiceRow | null>(null);
   const [sendingKey, setSendingKey] = useState<string | null>(null);
   const [checkingBatch, setCheckingBatch] = useState(false);
+  const [showProWelcome, setShowProWelcome] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth" });
   }, [user, loading, navigate]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("upgraded") === "true" || params.get("success") === "true") {
+        setShowProWelcome(true);
+        // Clean URL query param without refreshing
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+  }, []);
 
   const invoicesQuery = useQuery({
     queryKey: ["invoices", user?.id],
@@ -248,6 +260,10 @@ function Dashboard() {
         payment_details: resolvedPayment,
         freelancerName: resolvedName,
         freelancer_name: resolvedName,
+        lateFee: invoice.late_fee,
+        late_fee: invoice.late_fee,
+        clientNotes: invoice.client_notes,
+        client_notes: invoice.client_notes,
       };
 
       let success = false;
@@ -337,6 +353,8 @@ function Dashboard() {
         status: inv.status,
         payment_details: inv.payment_details || resolvedPayment,
         freelancer_name: resolvedName,
+        late_fee: inv.late_fee,
+        client_notes: inv.client_notes,
       }));
 
       let res: { sentCount: number; checkedCount: number } | null = null;
@@ -402,6 +420,31 @@ function Dashboard() {
       />
 
       <main className="mx-auto max-w-3xl px-5 pb-14 pt-6">
+        {showProWelcome ? (
+          <div className="mb-5 rounded-2xl border-2 border-brand bg-brand-soft/70 p-4 text-foreground shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">🎉</span>
+                <div>
+                  <h3 className="font-display text-base font-semibold text-brand">
+                    Welcome to PayReminder Pro!
+                  </h3>
+                  <p className="mt-0.5 text-xs text-foreground/80 leading-relaxed">
+                    Your PayPal subscription is active! Unlimited invoices and automatic reminder checks are now fully unlocked for your account.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowProWelcome(false)}
+                className="font-mono text-xs text-muted-foreground hover:text-foreground"
+              >
+                ✕ Close
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <div className="rounded-3xl border border-border bg-card/70 p-5">
           <div className="label-mono">Waiting to be paid</div>
           <div className="mt-1 font-display text-[2.9rem] font-semibold leading-none tracking-tight">
@@ -619,7 +662,25 @@ function Dashboard() {
                           💳 Custom payment info
                         </span>
                       ) : null}
+                      {invoice.late_fee ? (
+                        <span
+                          className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] text-amber-700 dark:text-amber-400 border border-amber-500/20"
+                          title={`Late fee specified: ${invoice.late_fee}`}
+                        >
+                          ⚡ Late fee: {invoice.late_fee}
+                        </span>
+                      ) : null}
                     </div>
+
+                    {invoice.client_notes ? (
+                      <div className="mt-2 rounded-lg bg-muted/30 px-2.5 py-1.5 text-[11px] text-muted-foreground border border-border/30 flex items-start gap-1.5">
+                        <span className="text-[11px] select-none">🔒</span>
+                        <span>
+                          <strong className="text-foreground/80 font-medium">Private note:</strong>{" "}
+                          {invoice.client_notes}
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="text-right">
                     <p className="font-display text-lg font-semibold">

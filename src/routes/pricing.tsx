@@ -87,8 +87,8 @@ function Pricing() {
               return;
             }
             setPlan("pro");
-            toast.success("You're on Pro — unlimited invoices unlocked.");
-            navigate({ to: "/dashboard" });
+            toast.success("You're on Pro — unlimited invoices unlocked!");
+            window.location.href = "/dashboard?upgraded=true";
           },
           onCancel: () => {
             toast.info("PayPal subscription checkout was cancelled.");
@@ -143,30 +143,67 @@ function Pricing() {
           Start free with 3 invoices. When the chasing adds up, Pro handles it for you.
         </p>
 
-        <div className="card-paper mt-6 p-5">
-          <div className="font-display text-lg font-semibold">Free</div>
+        <div className="mt-4 rounded-xl border border-brand/30 bg-brand-soft/30 p-3 text-xs text-muted-foreground">
+          💡 <strong>Why Pro pays for itself:</strong> Recovering just one $500 unpaid invoice pays for more than 2 years of Pro ($19/mo).
+        </div>
+
+        <div className="card-paper mt-5 p-5">
+          <div className="flex items-center justify-between">
+            <div className="font-display text-lg font-semibold">Free</div>
+            <span className="font-mono text-xs text-muted-foreground">$0 forever</span>
+          </div>
           <p className="mt-1 font-display text-3xl font-semibold">$0</p>
           <ul className="mt-3 space-y-1.5 text-[13px] text-muted-foreground">
-            <li>Track up to 3 invoices</li>
-            <li>Dashboard and paid/unpaid tracking</li>
+            <li className="flex items-center gap-2">
+              <span className="text-brand">✓</span> Track up to 3 active invoices
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="text-brand">✓</span> 1-click manual reminder sending
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="text-brand">✓</span> Highlighted payment details in emails
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="text-brand">✓</span> 0% commission on your invoices
+            </li>
           </ul>
         </div>
 
-        <div className="mt-4 rounded-2xl border-2 border-brand bg-brand-soft/40 p-5">
-          <div className="font-display text-lg font-semibold">Pro</div>
+        <div className="mt-4 rounded-2xl border-2 border-brand bg-brand-soft/40 p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="font-display text-lg font-semibold">Pro</div>
+            <span className="rounded-full bg-brand/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-brand">
+              Full Autopilot
+            </span>
+          </div>
           <p className="mt-1 font-display text-3xl font-semibold">
             $19<span className="text-sm font-medium text-muted-foreground">/month</span>
           </p>
-          <ul className="mt-3 space-y-1.5 text-[13px]">
-            <li>Unlimited invoices</li>
-            <li>Automatic reminders after 3, 7 and 14 days</li>
-            <li>Cancel any time from PayPal</li>
+          <ul className="mt-3 space-y-2 text-[13px]">
+            <li className="flex items-center gap-2 font-medium">
+              <span className="text-brand">✓</span> <strong>Unlimited active invoices</strong>
+            </li>
+            <li className="flex items-center gap-2 font-medium">
+              <span className="text-brand">✓</span> <strong>Automatic daily reminders</strong> (cron runs daily at 9am)
+            </li>
+            <li className="flex items-center gap-2 font-medium">
+              <span className="text-brand">✓</span> <strong>Multiple payment options</strong> with 1-click links
+            </li>
+            <li className="flex items-center gap-2 font-medium">
+              <span className="text-brand">✓</span> <strong>Private client notes</strong> (track quirks)
+            </li>
+            <li className="flex items-center gap-2 font-medium">
+              <span className="text-brand">✓</span> <strong>Late fee warnings</strong> on 14-day final notice
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="text-brand">✓</span> Cancel any time with 1 click directly from PayPal
+            </li>
           </ul>
 
           <div className="mt-5">
             {plan === "pro" ? (
-              <p className="rounded-xl bg-sage-soft px-4 py-3 text-center text-sm text-sage">
-                You're already on Pro. Thank you!
+              <p className="rounded-xl bg-sage-soft px-4 py-3 text-center text-sm font-semibold text-sage">
+                You're already on Pro. Unlimited invoices active!
               </p>
             ) : !user ? (
               <Link to="/auth" className="btn-brand block w-full py-3 text-center text-[14px]">

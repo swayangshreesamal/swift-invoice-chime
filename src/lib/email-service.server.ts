@@ -12,6 +12,7 @@ export interface ReminderEmailParams {
   daysOverdue: number;
   freelancerName?: string | null;
   paymentDetails?: string | null;
+  lateFee?: string | null;
 }
 
 export interface RenderedEmail {
@@ -46,13 +47,40 @@ function escapeHtml(str: string): string {
     .replace(/'/g, "&#039;");
 }
 
-function extractFirstUrl(text: string): string | null {
-  const match = text.match(/https?:\/\/[^\s"'<>]+/i);
-  return match ? match[0] : null;
+function extractAllUrls(text: string): Array<{ url: string; label: string }> {
+  const matches = text.match(/https?:\/\/[^\s"'<>]+/gi);
+  if (!matches || matches.length === 0) return [];
+
+  const unique = Array.from(new Set(matches));
+  return unique.map((url) => {
+    let label = "Pay Online Now →";
+    if (/paypal\.me/i.test(url)) {
+      label = "Pay via PayPal →";
+    } else if (/stripe\.com/i.test(url)) {
+      label = "Pay via Stripe →";
+    } else if (/wise\.com/i.test(url)) {
+      label = "Pay via Wise →";
+    } else if (/revolut\.me/i.test(url)) {
+      label = "Pay via Revolut →";
+    } else if (unique.length > 1) {
+      label = `Pay Online (${url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 20)}…) →`;
+    }
+    return { url, label };
+  });
 }
 
 export function renderReminderEmail(params: ReminderEmailParams): RenderedEmail {
-  const { clientName, amount, dueDate, description, stage, daysOverdue, freelancerName, paymentDetails } = params;
+  const {
+    clientName,
+    amount,
+    dueDate,
+    description,
+    stage,
+    daysOverdue,
+    freelancerName,
+    paymentDetails,
+    lateFee,
+  } = params;
   const formattedAmount = formatMoney(amount);
   const formattedDue = formatDate(dueDate);
   const payee = freelancerName?.trim() || "Freelancer / Service Provider";
@@ -60,15 +88,21 @@ export function renderReminderEmail(params: ReminderEmailParams): RenderedEmail 
     paymentDetails?.trim() ||
     "Please reply directly to this email to receive bank remittance or transfer instructions.";
 
-  const directPayUrl = extractFirstUrl(paymentInfo);
+  const detectedButtons = extractAllUrls(paymentInfo);
 
-  function renderPaymentButton(color: string): string {
-    if (!directPayUrl) return "";
+  function renderPaymentButtons(color: string): string {
+    if (detectedButtons.length === 0) return "";
     return `
-      <div style="margin-top: 14px; text-align: center;">
-        <a href="${directPayUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: ${color}; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 14px; padding: 11px 22px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-          Pay Online Now →
-        </a>
+      <div style="margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;">
+        ${detectedButtons
+          .map(
+            (btn) => `
+          <a href="${btn.url}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: ${color}; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 14px; padding: 10px 20px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin: 3px;">
+            ${escapeHtml(btn.label)}
+          </a>
+        `,
+          )
+          .join("")}
       </div>
     `;
   }
@@ -138,7 +172,7 @@ ${payee}
         <strong>Payment Details:</strong>
         <div class="payment-details-content">${escapeHtml(paymentInfo)}</div>
       </div>
-      ${renderPaymentButton("#16a34a")}
+      ${renderPaymentButtons("#16a34a")}
     </div>
 
     <p>We know how busy things get. If you have already processed this payment, thank you very much and please feel free to disregard this note.</p>
@@ -190,7 +224,7 @@ ${payee}
   .payment-details-content { margin-top: 6px; padding: 12px 14px; background: #ffffff; border: 1px solid #fde68a; border-radius: 6px; font-size: 14px; color: #0f172a; white-space: pre-wrap; word-break: break-word; line-height: 1.5; font-weight: 500; }
   .footer { margin-top: 24px; padding-top: 18px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
 </style></head>
-<body>
+ <body>
   <div class="card">
     <span class="badge">Second Notice · 7 Days Overdue</span>
     <h2>Follow-up: Overdue Invoice for ${escapeHtml(clientName)}</h2>
@@ -214,7 +248,7 @@ ${payee}
         <strong>Payment Details:</strong>
         <div class="payment-details-content">${escapeHtml(paymentInfo)}</div>
       </div>
-      ${renderPaymentButton("#d97706")}
+      ${renderPaymentButtons("#d97706")}
     </div>
 
     <p>Could you please look into this today and confirm when we can expect the remittance?</p>
@@ -230,6 +264,10 @@ ${payee}
 
   // Stage 14: Final Notice
   const subject = `FINAL NOTICE: Immediate payment required for invoice (${formattedAmount})`;
+  const lateFeeText = lateFee?.trim()
+    ? `\n• LATE FEE NOTICE: A late fee of ${lateFee.trim()} applies as outlined in payment terms if not settled within 48 hours.`
+    : "";
+
   const text = `Hi ${clientName},
 
 This is an urgent and final notice regarding your overdue invoice of ${formattedAmount}, originally due on ${formattedDue} (${daysOverdue} days past due).
@@ -238,12 +276,14 @@ ${description ? `Invoice details: ${description}\n` : ""}
 IMMEDIATE SETTLEMENT REQUIRED (HOW TO PAY):
 • Who to pay: ${payee}
 • Total Outstanding: ${formattedAmount}
-• Original Due Date: ${formattedDue}
+• Original Due Date: ${formattedDue}${lateFeeText}
 • Payment Details:
 ${paymentInfo}
 ==================================================
 
-Despite multiple previous reminders, this account remains unsettled. Please remit payment immediately using the details above or contact ${payee} today to resolve this matter.
+Despite multiple previous reminders, this account remains unsettled. Please remit payment immediately using the details above or contact ${payee} today to resolve this matter.${
+    lateFee?.trim() ? ` Note: Continued non-payment will result in a late fee of ${lateFee.trim()}.` : ""
+  }
 
 Sincerely,
 ${payee}
@@ -264,6 +304,7 @@ ${payee}
   .payment-title { font-size: 12px; font-weight: 700; color: #b91c1c; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
   .payment-row { margin-bottom: 8px; font-size: 14px; color: #991b1b; }
   .payment-details-content { margin-top: 6px; padding: 12px 14px; background: #ffffff; border: 1px solid #fecaca; border-radius: 6px; font-size: 14px; color: #0f172a; white-space: pre-wrap; word-break: break-word; line-height: 1.5; font-weight: 600; }
+  .late-fee-box { margin-top: 12px; padding: 10px 12px; background: #fee2e2; border-left: 3px solid #dc2626; border-radius: 4px; font-size: 13px; color: #991b1b; font-weight: 600; }
   .footer { margin-top: 24px; padding-top: 18px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8; }
 </style></head>
 <body>
@@ -290,7 +331,15 @@ ${payee}
         <strong>Remittance Account / Details:</strong>
         <div class="payment-details-content">${escapeHtml(paymentInfo)}</div>
       </div>
-      ${renderPaymentButton("#dc2626")}
+      ${
+        lateFee?.trim()
+          ? `
+      <div class="late-fee-box">
+        ⚠️ <strong>Late Fee Notice:</strong> A late fee of <u>${escapeHtml(lateFee.trim())}</u> applies if this balance is not settled within 48 hours.
+      </div>`
+          : ""
+      }
+      ${renderPaymentButtons("#dc2626")}
     </div>
 
     <p>Please remit payment immediately to settle this account. If there is an unresolved question regarding this invoice, please reach out to <strong>${escapeHtml(payee)}</strong> today.</p>
