@@ -136,11 +136,14 @@ function Dashboard() {
     }
   }, [profileQuery.data]);
 
+  const userInvoicesMeta = user?.user_metadata?.invoices_meta as
+    | Record<string, any>
+    | undefined;
   const rawInvoices = invoicesQuery.data ?? [];
   const resolvedPaymentDefault = profileQuery.data?.payment_details || defaultPaymentDetails;
   const invoices = useMemo(
-    () => rawInvoices.map((inv) => resolveInvoice(inv, resolvedPaymentDefault)),
-    [rawInvoices, resolvedPaymentDefault],
+    () => rawInvoices.map((inv) => resolveInvoice(inv, resolvedPaymentDefault, userInvoicesMeta)),
+    [rawInvoices, resolvedPaymentDefault, userInvoicesMeta],
   );
   const reminders = remindersQuery.data ?? [];
   const plan = profileQuery.data?.plan ?? "free";

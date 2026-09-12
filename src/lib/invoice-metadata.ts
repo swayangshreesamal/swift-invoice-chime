@@ -4,43 +4,22 @@ export type InvoiceMetadata = {
   late_fee?: string | null;
 };
 
-const METADATA_TAG_REGEX = /\n?\[METADATA:([\s\S]*?)\]\s*$/;
+// Matches full or truncated metadata tag at end of string or anywhere
+const METADATA_TAG_REGEX = /\s*\[METADATA:([\s\S]*?)\]\s*$/;
+const CORRUPTED_METADATA_REGEX = /\s*\[METADATA:[\s\S]*$/i;
 
 /**
- * Packs extended attributes into a standardized metadata envelope appended to description.
- * This allows storage in the core Postgres TEXT description column even when dedicated
- * columns are not present in the database schema.
- */
-export function packInvoiceMetadata(
-  description: string | null | undefined,
-  meta: InvoiceMetadata,
-): string | null {
-  const cleanDesc = cleanDescription(description);
-  const pd = meta.payment_details?.trim() || undefined;
-  const cn = meta.client_notes?.trim() || undefined;
-  const lf = meta.late_fee?.trim() || undefined;
-
-  if (!pd && !cn && !lf) {
-    return cleanDesc || null;
-  }
-
-  const payload = JSON.stringify({ pd, cn, lf });
-  const envelope = `[METADATA:${payload}]`;
-
-  return cleanDesc ? `${cleanDesc}\n${envelope}` : envelope;
-}
-
-/**
- * Strips any metadata envelope from the description so that human readers, clients,
- * and email previews only see the clean description text.
+ * Strips any metadata envelope (complete or incomplete/truncated) from the description
+ * so human readers, forms, and email previews ONLY see the clean description text.
  */
 export function cleanDescription(rawDescription: string | null | undefined): string {
   if (!rawDescription) return "";
-  return rawDescription.replace(METADATA_TAG_REGEX, "").trim();
+  return rawDescription.replace(CORRUPTED_METADATA_REGEX, "").trim();
 }
 
 /**
- * Unpacks the metadata envelope from the raw description.
+ * Robustly unpacks metadata from raw description.
+ * Handles both valid JSON envelopes and truncated envelopes (e.g. from column width cutoffs).
  */
 export function unpackInvoiceMetadata(rawDescription: string | null | undefined): {
   cleanDescription: string;
@@ -52,24 +31,50 @@ export function unpackInvoiceMetadata(rawDescription: string | null | undefined)
     return { cleanDescription: "" };
   }
 
-  const match = rawDescription.match(METADATA_TAG_REGEX);
   const clean = cleanDescription(rawDescription);
 
-  if (!match) {
-    return { cleanDescription: clean };
+  // Try standard JSON match first
+  const match = rawDescription.match(METADATA_TAG_REGEX);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      return {
+        cleanDescription: clean,
+        payment_details: typeof parsed.pd === "string" ? parsed.pd : null,
+        client_notes: typeof parsed.cn === "string" ? parsed.cn : null,
+        late_fee: typeof parsed.lf === "string" ? parsed.lf : null,
+      };
+    } catch {
+      // Fallback to regex extraction below if JSON was malformed
+    }
   }
 
-  try {
-    const parsed = JSON.parse(match[1]);
+  // Resilient regex extractor for truncated or unclosed metadata strings
+  if (rawDescription.includes("[METADATA:")) {
+    const pdMatch = rawDescription.match(/"pd"\s*:\s*"([^"]*)(?:"|$)/);
+    const cnMatch = rawDescription.match(/"cn"\s*:\s*"([^"]*)(?:"|$)/);
+    const lfMatch = rawDescription.match(/"lf"\s*:\s*"([^"]*)(?:"|$)/);
+
     return {
       cleanDescription: clean,
-      payment_details: typeof parsed.pd === "string" ? parsed.pd : null,
-      client_notes: typeof parsed.cn === "string" ? parsed.cn : null,
-      late_fee: typeof parsed.lf === "string" ? parsed.lf : null,
+      payment_details: pdMatch ? pdMatch[1] : null,
+      client_notes: cnMatch ? cnMatch[1] : null,
+      late_fee: lfMatch ? lfMatch[1] : null,
     };
-  } catch {
-    return { cleanDescription: clean };
   }
+
+  return { cleanDescription: clean };
+}
+
+/**
+ * Description is kept 100% clean so metadata is never visible in user form fields.
+ */
+export function packInvoiceMetadata(
+  description: string | null | undefined,
+  _meta?: InvoiceMetadata,
+): string | null {
+  const clean = cleanDescription(description);
+  return clean || null;
 }
 
 const LOCAL_STORAGE_PREFIX = "payreminder_meta_";
@@ -126,18 +131,21 @@ export type BaseInvoice = {
 };
 
 /**
- * Resolves an invoice by combining database columns, packed metadata envelope,
- * local storage, and profile default fallback.
+ * Resolves an invoice by combining database columns, user_metadata server store,
+ * local storage, and profile default fallback. Always ensures description is clean.
  */
 export function resolveInvoice<T extends BaseInvoice>(
   inv: T,
   defaultPaymentDetails?: string | null,
+  userInvoicesMeta?: Record<string, InvoiceMetadata> | null,
 ): T {
   const unpacked = unpackInvoiceMetadata(inv.description);
   const local = getLocalInvoiceMeta(inv.id);
+  const serverMeta = userInvoicesMeta?.[inv.id] || {};
 
   const payment_details =
     inv.payment_details ||
+    serverMeta.payment_details ||
     unpacked.payment_details ||
     local.payment_details ||
     defaultPaymentDetails ||
@@ -145,12 +153,14 @@ export function resolveInvoice<T extends BaseInvoice>(
 
   const client_notes =
     inv.client_notes ||
+    serverMeta.client_notes ||
     unpacked.client_notes ||
     local.client_notes ||
     null;
 
   const late_fee =
     inv.late_fee ||
+    serverMeta.late_fee ||
     unpacked.late_fee ||
     local.late_fee ||
     null;

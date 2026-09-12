@@ -402,67 +402,77 @@ test("Reminder email templates - renders late fee notice in Stage 14 urgent noti
   assert.match(stage14WithLateFee.text, /LATE FEE NOTICE: A late fee of 5% late fee \(\$100\) applies/i);
 });
 
-test("Invoice metadata resilience - packs and unpacks extended attributes into description", async () => {
+test("Invoice metadata resilience - cleans descriptions and salvages truncated metadata", async () => {
   const { packInvoiceMetadata, unpackInvoiceMetadata, cleanDescription, resolveInvoice } =
     await import("./src/lib/invoice-metadata.ts");
 
-  // 1. Pack metadata into description
+  // 1. Pack metadata produces clean description
   const rawDesc = "Brand design & web development";
   const packed = packInvoiceMetadata(rawDesc, {
     payment_details: "https://paypal.me/SwayangSamal",
     client_notes: "he pays after 10 days",
     late_fee: "5% late fee",
   });
+  assert.equal(packed, "Brand design & web development");
 
-  assert.ok(packed);
-  assert.match(packed, /^Brand design & web development\n\[METADATA:\{.*\}\]$/);
+  // 2. Truncated legacy tag salvage
+  const truncatedLegacy =
+    '[METADATA:{"pd":"https://paypal.me/SwayangSamal","cn":"always pays after 3days notificati';
+  const salvaged = unpackInvoiceMetadata(truncatedLegacy);
+  assert.equal(salvaged.cleanDescription, "");
+  assert.equal(salvaged.payment_details, "https://paypal.me/SwayangSamal");
+  assert.equal(salvaged.client_notes, "always pays after 3days notificati");
 
-  // 2. Clean description strips tag
-  const cleaned = cleanDescription(packed);
-  assert.equal(cleaned, "Brand design & web development");
+  // 3. Clean description strips complete and truncated tags
+  assert.equal(cleanDescription(truncatedLegacy), "");
+  assert.equal(cleanDescription("Logo design\n[METADATA:{\"pd\":\"abc\"}]"), "Logo design");
 
-  // 3. Unpack recovers all fields
-  const unpacked = unpackInvoiceMetadata(packed);
-  assert.equal(unpacked.cleanDescription, "Brand design & web development");
-  assert.equal(unpacked.payment_details, "https://paypal.me/SwayangSamal");
-  assert.equal(unpacked.client_notes, "he pays after 10 days");
-  assert.equal(unpacked.late_fee, "5% late fee");
-
-  // 4. Resolves invoice using unpacked metadata if DB columns are null
-  const baseInvoice = {
+  // 4. Resolves invoice using user metadata server store and cleans description
+  const legacyInvoice = {
     id: "inv_123",
     client_name: "Acme Corp",
     client_email: "billing@acme.com",
     amount: 1200,
     invoice_date: "2026-09-01",
     due_date: "2026-09-15",
-    description: packed,
+    description: truncatedLegacy,
     payment_details: null,
     client_notes: null,
     late_fee: null,
     status: "unpaid",
   };
 
-  const resolved = resolveInvoice(baseInvoice, "default_profile_payment");
-  assert.equal(resolved.description, "Brand design & web development");
+  const userMeta = {
+    inv_123: {
+      payment_details: "https://paypal.me/SwayangSamal",
+      client_notes: "always pays after 3days notification",
+      late_fee: "5% late fee",
+    },
+  };
+
+  const resolved = resolveInvoice(legacyInvoice, "default_profile_payment", userMeta);
+  // Description is guaranteed clean (null when empty)
+  assert.equal(resolved.description, null);
   assert.equal(resolved.payment_details, "https://paypal.me/SwayangSamal");
-  assert.equal(resolved.client_notes, "he pays after 10 days");
+  assert.equal(resolved.client_notes, "always pays after 3days notification");
   assert.equal(resolved.late_fee, "5% late fee");
 
   // 5. Fallback core values strictly only contain guaranteed columns
   const coreValues = {
-    client_name: baseInvoice.client_name,
-    client_email: baseInvoice.client_email,
-    amount: baseInvoice.amount,
-    invoice_date: baseInvoice.invoice_date,
-    due_date: baseInvoice.due_date,
-    description: packed,
+    client_name: legacyInvoice.client_name,
+    client_email: legacyInvoice.client_email,
+    amount: legacyInvoice.amount,
+    invoice_date: legacyInvoice.invoice_date,
+    due_date: legacyInvoice.due_date,
+    description: cleanDescription(legacyInvoice.description) || null,
   };
 
+  assert.equal(coreValues.description, null);
   assert.equal("payment_details" in coreValues, false);
   assert.equal("client_notes" in coreValues, false);
   assert.equal("late_fee" in coreValues, false);
 });
+
 
 
 

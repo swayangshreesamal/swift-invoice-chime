@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { supabase } from "@/integrations/supabase/client";
 import {
-  packInvoiceMetadata,
+  cleanDescription,
   unpackInvoiceMetadata,
   saveLocalInvoiceMeta,
   getLocalInvoiceMeta,
@@ -69,20 +69,26 @@ export function InvoiceForm({
   const [invoiceDate, setInvoiceDate] = useState(existing?.invoice_date ?? today());
   const [dueDate, setDueDate] = useState(existing?.due_date ?? inTwoWeeks());
   const [description, setDescription] = useState(
-    initialUnpacked.cleanDescription || existing?.description || "",
+    initialUnpacked.cleanDescription,
   );
   const [paymentDetails, setPaymentDetails] = useState(
-    existing?.payment_details ??
-      initialUnpacked.payment_details ??
-      initialLocal.payment_details ??
-      defaultPaymentDetails ??
+    existing?.payment_details ||
+      initialUnpacked.payment_details ||
+      initialLocal.payment_details ||
+      defaultPaymentDetails ||
       "",
   );
   const [clientNotes, setClientNotes] = useState(
-    existing?.client_notes ?? initialUnpacked.client_notes ?? initialLocal.client_notes ?? "",
+    existing?.client_notes ||
+      initialUnpacked.client_notes ||
+      initialLocal.client_notes ||
+      "",
   );
   const [lateFee, setLateFee] = useState(
-    existing?.late_fee ?? initialUnpacked.late_fee ?? initialLocal.late_fee ?? "",
+    existing?.late_fee ||
+      initialUnpacked.late_fee ||
+      initialLocal.late_fee ||
+      "",
   );
   const [busy, setBusy] = useState(false);
 
@@ -105,9 +111,10 @@ export function InvoiceForm({
     }
 
     setBusy(true);
+    const cleanDesc = description ? cleanDescription(description) || null : null;
     const values = {
       ...parsed.data,
-      description: parsed.data.description ?? null,
+      description: cleanDesc,
       payment_details: parsed.data.payment_details ?? null,
       client_notes: parsed.data.client_notes ?? null,
       late_fee: parsed.data.late_fee ?? null,
@@ -121,7 +128,7 @@ export function InvoiceForm({
     let error = result.error;
     let savedInvoice = result.data?.[0];
 
-    // 2. Resilient fallback: if extended columns fail in Supabase schema cache, fallback to core fields with packed metadata
+    // 2. Resilient fallback: if extended columns fail in Supabase schema cache, fallback to core fields (clean description!)
     if (
       error &&
       (error.message?.includes("column") ||
@@ -132,14 +139,8 @@ export function InvoiceForm({
         error.message?.includes("late_fee"))
     ) {
       console.warn(
-        "Extended columns not present in Supabase schema cache. Falling back to core columns + packed metadata.",
+        "Extended columns not present in Supabase schema cache. Falling back to core columns with clean description.",
       );
-
-      const packedDesc = packInvoiceMetadata(parsed.data.description, {
-        payment_details: parsed.data.payment_details,
-        client_notes: parsed.data.client_notes,
-        late_fee: parsed.data.late_fee,
-      });
 
       const coreValues = {
         client_name: parsed.data.client_name,
@@ -147,7 +148,7 @@ export function InvoiceForm({
         amount: parsed.data.amount,
         invoice_date: parsed.data.invoice_date,
         due_date: parsed.data.due_date,
-        description: packedDesc,
+        description: cleanDesc,
       };
 
       const retry = existing
@@ -169,17 +170,37 @@ export function InvoiceForm({
       return;
     }
 
-    // Persist metadata locally for immediate client reliability
+    // Persist metadata locally and to Supabase Auth user_metadata
     const invoiceId = existing?.id || savedInvoice?.id;
     if (invoiceId) {
-      saveLocalInvoiceMeta(invoiceId, {
-        payment_details: parsed.data.payment_details,
-        client_notes: parsed.data.client_notes,
-        late_fee: parsed.data.late_fee,
-      });
+      const meta = {
+        payment_details: parsed.data.payment_details?.trim() || null,
+        client_notes: parsed.data.client_notes?.trim() || null,
+        late_fee: parsed.data.late_fee?.trim() || null,
+      };
+
+      saveLocalInvoiceMeta(invoiceId, meta);
+
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user) {
+          const existingMeta =
+            (authData.user.user_metadata?.invoices_meta as Record<string, any>) || {};
+          await supabase.auth.updateUser({
+            data: {
+              invoices_meta: {
+                ...existingMeta,
+                [invoiceId]: meta,
+              },
+            },
+          });
+        }
+      } catch (syncErr) {
+        console.warn("Could not sync invoice metadata to user_metadata:", syncErr);
+      }
     }
 
-    // Also sync payment details to Auth user metadata if provided
+    // Also sync default payment details to Auth user metadata if provided
     if (parsed.data.payment_details && !defaultPaymentDetails) {
       try {
         await supabase.auth.updateUser({
