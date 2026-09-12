@@ -207,9 +207,7 @@ export function getMailTransporter(): nodemailer.Transporter {
   }
 
   cachedTransporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
+    service: "gmail",
     auth: { user, pass },
   });
 
