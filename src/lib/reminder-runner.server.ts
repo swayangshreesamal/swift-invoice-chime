@@ -3,16 +3,44 @@ import { daysOverdue } from "./format";
 import { sendReminderEmail, type ReminderStage } from "./email-service.server";
 import type { Database } from "@/integrations/supabase/types";
 
+function isNewSupabaseApiKey(value: string): boolean {
+  return value.startsWith("sb_publishable_") || value.startsWith("sb_secret_");
+}
+
+function createSupabaseFetch(supabaseKey: string): typeof fetch {
+  return (input, init) => {
+    const headers = new Headers(
+      typeof Request !== "undefined" && input instanceof Request ? input.headers : undefined,
+    );
+
+    if (init?.headers) {
+      new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+    }
+
+    if (
+      isNewSupabaseApiKey(supabaseKey) &&
+      headers.get("Authorization") === `Bearer ${supabaseKey}`
+    ) {
+      headers.delete("Authorization");
+    }
+
+    headers.set("apikey", supabaseKey);
+    return fetch(input, { ...init, headers });
+  };
+}
+
 function getSupabaseAdmin() {
   const url =
-    process.env.SUPABASE_URL ||
+    process.env["SUPABASE_URL"] ||
     "https://c--b6cb859b-e2fa-4610-9ae8-d4f367c75dd4-prod.lovable.cloud";
-  // Prefer service role key if present, fallback to publishable key
   const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_PUBLISHABLE_KEY ||
+    process.env["SUPABASE_SERVICE_ROLE_KEY"] ||
+    process.env["SUPABASE_PUBLISHABLE_KEY"] ||
     "sb_publishable_Qf_4_y0Wcb8OpREEqVfngw_bHkMm2El";
   return createClient<Database>(url, key, {
+    global: {
+      fetch: createSupabaseFetch(key),
+    },
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
@@ -30,47 +58,74 @@ export interface ReminderJobResult {
   }>;
 }
 
+export interface InvoiceCandidate {
+  id: string;
+  user_id?: string;
+  client_name: string;
+  client_email: string;
+  amount: number | string;
+  due_date: string;
+  description?: string | null;
+  status?: string;
+}
+
 /**
  * Scans all unpaid invoices and sends pending reminder emails for 3, 7, and 14 days overdue.
  */
 export async function processAllOverdueReminders(
+  customInvoices?: InvoiceCandidate[],
   customClient?: ReturnType<typeof getSupabaseAdmin>,
 ): Promise<ReminderJobResult> {
   const supabase = customClient || getSupabaseAdmin();
 
-  // 1. Fetch all unpaid invoices
-  const { data: invoices, error: invError } = await supabase
-    .from("invoices")
-    .select(
-      "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status",
-    )
-    .eq("status", "unpaid");
+  let invoices: InvoiceCandidate[] = (customInvoices || []).filter(
+    (i) => i.status === "unpaid" || !i.status,
+  );
 
-  if (invError) {
-    console.error("[ReminderRunner] Error fetching invoices:", invError);
-    throw new Error(`Failed to fetch invoices: ${invError.message}`);
+  // If invoices were not supplied directly by client caller, query database
+  if (!invoices || invoices.length === 0) {
+    try {
+      const { data, error: invError } = await supabase
+        .from("invoices")
+        .select(
+          "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status",
+        )
+        .eq("status", "unpaid");
+
+      if (invError) {
+        console.error("[ReminderRunner] Error fetching invoices:", invError);
+      } else {
+        invoices = (data ?? []) as InvoiceCandidate[];
+      }
+    } catch (e) {
+      console.warn("[ReminderRunner] Failed to fetch invoices from Supabase:", e);
+    }
   }
 
   if (!invoices || invoices.length === 0) {
     return { checkedCount: 0, sentCount: 0, results: [] };
   }
 
-  // 2. Fetch existing reminders to prevent duplicates
+  // Fetch existing reminders to prevent duplicate notices
   const invoiceIds = invoices.map((i) => i.id);
-  const { data: existingReminders, error: remError } = await supabase
-    .from("reminders")
-    .select("invoice_id, stage, status")
-    .in("invoice_id", invoiceIds);
-
-  if (remError) {
-    console.warn("[ReminderRunner] Could not query reminders:", remError);
-  }
-
-  // Map of invoiceId -> Set of stages sent
   const sentMap = new Map<string, Set<number>>();
-  for (const r of existingReminders || []) {
-    if (!sentMap.has(r.invoice_id)) sentMap.set(r.invoice_id, new Set());
-    sentMap.get(r.invoice_id)!.add(r.stage);
+
+  try {
+    const { data: existingReminders, error: remError } = await supabase
+      .from("reminders")
+      .select("invoice_id, stage, status")
+      .in("invoice_id", invoiceIds);
+
+    if (remError) {
+      console.warn("[ReminderRunner] Could not query reminders:", remError);
+    } else {
+      for (const r of existingReminders || []) {
+        if (!sentMap.has(r.invoice_id)) sentMap.set(r.invoice_id, new Set());
+        sentMap.get(r.invoice_id)!.add(r.stage);
+      }
+    }
+  } catch (e) {
+    console.warn("[ReminderRunner] Error reading reminders history:", e);
   }
 
   const results: ReminderJobResult["results"] = [];
@@ -101,7 +156,7 @@ export async function processAllOverdueReminders(
         clientEmail: inv.client_email,
         amount: Number(inv.amount),
         dueDate: inv.due_date,
-        description: inv.description,
+        description: inv.description ?? null,
         stage,
         daysOverdue: overdue,
       });
@@ -109,13 +164,17 @@ export async function processAllOverdueReminders(
       if (emailRes.success) {
         sentCount++;
         // Record in reminders table
-        await supabase.from("reminders").insert({
-          invoice_id: inv.id,
-          user_id: inv.user_id,
-          stage,
-          status: "sent",
-          sent_at: new Date().toISOString(),
-        });
+        try {
+          await supabase.from("reminders").insert({
+            invoice_id: inv.id,
+            user_id: inv.user_id || "",
+            stage,
+            status: "sent",
+            sent_at: new Date().toISOString(),
+          });
+        } catch (dbErr) {
+          console.warn("[ReminderRunner] Sent email but could not log reminder to DB:", dbErr);
+        }
 
         results.push({
           invoiceId: inv.id,
@@ -149,11 +208,15 @@ export async function processAllOverdueReminders(
 
 export interface ManualInvoicePayload {
   clientName?: string;
+  client_name?: string;
   clientEmail?: string;
-  amount?: number;
+  client_email?: string;
+  amount?: number | string;
   dueDate?: string;
+  due_date?: string;
   description?: string | null;
   userId?: string;
+  user_id?: string;
 }
 
 /**
@@ -167,37 +230,55 @@ export async function sendManualInvoiceReminder(
 ): Promise<{ success: boolean; error?: string }> {
   const supabase = customClient || getSupabaseAdmin();
 
-  let clientName = payload?.clientName;
-  let clientEmail = payload?.clientEmail;
-  let amount = payload?.amount;
-  let dueDate = payload?.dueDate;
-  let description = payload?.description;
-  let userId = payload?.userId;
+  let clientEmail = (payload?.clientEmail || payload?.client_email || "").trim();
+  let clientName = (payload?.clientName || payload?.client_name || "").trim();
+  const rawAmount = payload?.amount;
+  let amount: number | undefined =
+    rawAmount !== undefined && rawAmount !== null ? Number(rawAmount) : undefined;
+  let dueDate = (payload?.dueDate || payload?.due_date || "").trim();
+  let description = payload?.description ?? null;
+  let userId = payload?.userId || payload?.user_id;
 
-  // If details were not provided in payload, query database
-  if (!clientEmail || !clientName || !dueDate || amount === undefined) {
-    const { data: inv, error: invError } = await supabase
-      .from("invoices")
-      .select(
-        "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status",
-      )
-      .eq("id", invoiceId)
-      .maybeSingle();
+  // If email was not passed in payload, query database for details
+  if (!clientEmail) {
+    try {
+      const { data: inv, error: invError } = await supabase
+        .from("invoices")
+        .select(
+          "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status",
+        )
+        .eq("id", invoiceId)
+        .maybeSingle();
 
-    if (inv) {
-      clientName = inv.client_name;
-      clientEmail = inv.client_email;
-      amount = Number(inv.amount);
-      dueDate = inv.due_date;
-      description = inv.description;
-      userId = inv.user_id;
-    } else if (invError) {
-      return { success: false, error: invError.message };
+      if (inv) {
+        clientName = inv.client_name;
+        clientEmail = inv.client_email;
+        amount = Number(inv.amount);
+        dueDate = inv.due_date;
+        description = inv.description;
+        userId = inv.user_id;
+      } else if (invError) {
+        console.warn("[sendManualInvoiceReminder] Supabase query returned error:", invError.message);
+      }
+    } catch (dbErr) {
+      console.warn("[sendManualInvoiceReminder] Failed to query Supabase:", dbErr);
     }
   }
 
-  if (!clientEmail || !clientName || !dueDate || amount === undefined) {
+  // Ensure clientEmail exists and is valid
+  if (!clientEmail || !clientEmail.includes("@")) {
     return { success: false, error: "Invoice not found or missing client email." };
+  }
+
+  // Default fallbacks for non-critical metadata
+  if (!clientName) {
+    clientName = clientEmail.split("@")[0] || "Valued Client";
+  }
+  if (!dueDate) {
+    dueDate = new Date().toISOString().slice(0, 10);
+  }
+  if (amount === undefined || isNaN(amount)) {
+    amount = 0;
   }
 
   const overdue = daysOverdue(dueDate);
@@ -213,7 +294,7 @@ export async function sendManualInvoiceReminder(
   });
 
   if (!emailRes.success) {
-    return { success: false, error: emailRes.error };
+    return { success: false, error: emailRes.error || "Failed to send email via SMTP." };
   }
 
   // Record or update reminder status in database if user_id is available

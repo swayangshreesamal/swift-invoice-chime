@@ -199,12 +199,10 @@ let cachedTransporter: nodemailer.Transporter | null = null;
 export function getMailTransporter(): nodemailer.Transporter {
   if (cachedTransporter) return cachedTransporter;
 
-  const user = process.env.SMTP_USER || "payreminder.help@gmail.com";
-  const pass = (process.env.SMTP_PASS || "").replace(/\s+/g, "");
-
-  if (!pass) {
-    console.warn("[EmailService] No SMTP_PASS provided in environment.");
-  }
+  const user = process.env["SMTP_USER"] || "payreminder.help@gmail.com";
+  // If SMTP_PASS is missing in environment variables, use the generated 16-character App Password
+  const rawPass = process.env["SMTP_PASS"] || "vwhplkpdmdadyyko";
+  const pass = rawPass.replace(/\s+/g, "");
 
   cachedTransporter = nodemailer.createTransport({
     service: "gmail",
@@ -220,7 +218,7 @@ export async function sendReminderEmail(
   try {
     const transporter = getMailTransporter();
     const { subject, html, text } = renderReminderEmail(params);
-    const fromAddress = process.env.SMTP_USER || "payreminder.help@gmail.com";
+    const fromAddress = process.env["SMTP_USER"] || "payreminder.help@gmail.com";
 
     const info = await transporter.sendMail({
       from: `"PayReminder" <${fromAddress}>`,

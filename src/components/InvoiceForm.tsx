@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 export type InvoiceRow = {
   id: string;
+  user_id?: string;
   client_name: string;
   client_email: string;
   amount: number;

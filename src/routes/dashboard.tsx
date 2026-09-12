@@ -127,16 +127,21 @@ function Dashboard() {
     const key = `${invoice.id}-${stage}`;
     setSendingKey(key);
     try {
+      const targetUserId = invoice.user_id || user?.id || "";
       const res = await triggerManualReminder({
         data: {
           invoiceId: invoice.id,
           stage,
           clientName: invoice.client_name,
+          client_name: invoice.client_name,
           clientEmail: invoice.client_email,
+          client_email: invoice.client_email,
           amount: Number(invoice.amount),
           dueDate: invoice.due_date,
+          due_date: invoice.due_date,
           description: invoice.description,
-          userId: invoice.user_id,
+          userId: targetUserId,
+          user_id: targetUserId,
         },
       });
       if (!res.success) {
@@ -145,19 +150,21 @@ function Dashboard() {
       }
 
       // Upsert reminder status in Supabase so dashboard badge updates immediately
-      try {
-        await supabase.from("reminders").upsert(
-          {
-            invoice_id: invoice.id,
-            user_id: invoice.user_id,
-            stage,
-            status: "sent",
-            sent_at: new Date().toISOString(),
-          },
-          { onConflict: "invoice_id,stage" },
-        );
-      } catch (logErr) {
-        console.warn("Could not save reminder log to database:", logErr);
+      if (targetUserId) {
+        try {
+          await supabase.from("reminders").upsert(
+            {
+              invoice_id: invoice.id,
+              user_id: targetUserId,
+              stage,
+              status: "sent",
+              sent_at: new Date().toISOString(),
+            },
+            { onConflict: "invoice_id,stage" },
+          );
+        } catch (logErr) {
+          console.warn("Could not save reminder log to database:", logErr);
+        }
       }
 
       toast.success(`${stage}d reminder successfully emailed to ${invoice.client_email}`);
@@ -173,7 +180,20 @@ function Dashboard() {
     setCheckingBatch(true);
     toast.info("Scanning invoices and dispatching pending reminders…");
     try {
-      const res = await triggerBatchReminders();
+      const res = await triggerBatchReminders({
+        data: {
+          invoices: unpaid.map((inv) => ({
+            id: inv.id,
+            user_id: inv.user_id || user?.id,
+            client_name: inv.client_name,
+            client_email: inv.client_email,
+            amount: Number(inv.amount),
+            due_date: inv.due_date,
+            description: inv.description,
+            status: inv.status,
+          })),
+        },
+      });
       if (res.sentCount > 0) {
         toast.success(`Sent ${res.sentCount} overdue reminder email(s)!`);
       } else {
