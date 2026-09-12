@@ -123,29 +123,82 @@ function Dashboard() {
     refresh();
   }
 
+  const [testingEmail, setTestingEmail] = useState(false);
+
+  async function handleSendTest() {
+    const recipient = user?.email || "sswayamsree@gmail.com";
+    setTestingEmail(true);
+    toast.info(`Sending test email to ${recipient}…`);
+    try {
+      const res = await fetch(`/api/reminders/test?to=${encodeURIComponent(recipient)}`);
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(
+          `Test email delivered to ${recipient}! If not in Primary, please check your Spam/Promotions folder.`,
+          { duration: 8000 },
+        );
+      } else {
+        toast.error(data.error || "Failed to send test email. Check email configuration.");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Network error testing email");
+    } finally {
+      setTestingEmail(false);
+    }
+  }
+
   async function handleSendSingle(invoice: InvoiceRow, stage: 3 | 7 | 14) {
     const key = `${invoice.id}-${stage}`;
     setSendingKey(key);
     try {
       const targetUserId = invoice.user_id || user?.id || "";
-      const res = await triggerManualReminder({
-        data: {
-          invoiceId: invoice.id,
-          stage,
-          clientName: invoice.client_name,
-          client_name: invoice.client_name,
-          clientEmail: invoice.client_email,
-          client_email: invoice.client_email,
-          amount: Number(invoice.amount),
-          dueDate: invoice.due_date,
-          due_date: invoice.due_date,
-          description: invoice.description,
-          userId: targetUserId,
-          user_id: targetUserId,
-        },
-      });
-      if (!res.success) {
-        toast.error(res.error || "Could not send reminder. Check email configuration.");
+      const payload = {
+        invoiceId: invoice.id,
+        stage,
+        clientName: invoice.client_name,
+        client_name: invoice.client_name,
+        clientEmail: invoice.client_email,
+        client_email: invoice.client_email,
+        amount: Number(invoice.amount),
+        dueDate: invoice.due_date,
+        due_date: invoice.due_date,
+        description: invoice.description,
+        userId: targetUserId,
+        user_id: targetUserId,
+      };
+
+      let success = false;
+      let errorMsg: string | undefined;
+
+      // Primary attempt: direct /api/reminders/send endpoint
+      try {
+        const response = await fetch("/api/reminders/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (data.success) {
+          success = true;
+        } else {
+          errorMsg = data.error;
+        }
+      } catch {
+        // Secondary fallback: TanStack Start RPC
+        try {
+          const res = await triggerManualReminder({ data: payload });
+          if (res.success) {
+            success = true;
+          } else {
+            errorMsg = res.error;
+          }
+        } catch (rpcErr) {
+          errorMsg = rpcErr instanceof Error ? rpcErr.message : String(rpcErr);
+        }
+      }
+
+      if (!success) {
+        toast.error(errorMsg || "Could not send reminder. Check email configuration.");
         return;
       }
 
@@ -167,7 +220,10 @@ function Dashboard() {
         }
       }
 
-      toast.success(`${stage}d reminder successfully emailed to ${invoice.client_email}`);
+      toast.success(
+        `${stage}d reminder sent to ${invoice.client_email}! (Check inbox & Spam folder)`,
+        { duration: 7000 },
+      );
       refresh();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to send reminder");
@@ -180,23 +236,37 @@ function Dashboard() {
     setCheckingBatch(true);
     toast.info("Scanning invoices and dispatching pending reminders…");
     try {
-      const res = await triggerBatchReminders({
-        data: {
-          invoices: unpaid.map((inv) => ({
-            id: inv.id,
-            user_id: inv.user_id || user?.id,
-            client_name: inv.client_name,
-            client_email: inv.client_email,
-            amount: Number(inv.amount),
-            due_date: inv.due_date,
-            description: inv.description,
-            status: inv.status,
-          })),
-        },
-      });
-      if (res.sentCount > 0) {
-        toast.success(`Sent ${res.sentCount} overdue reminder email(s)!`);
-      } else {
+      const invoicePayload = unpaid.map((inv) => ({
+        id: inv.id,
+        user_id: inv.user_id || user?.id,
+        client_name: inv.client_name,
+        client_email: inv.client_email,
+        amount: Number(inv.amount),
+        due_date: inv.due_date,
+        description: inv.description,
+        status: inv.status,
+      }));
+
+      let res: { sentCount: number; checkedCount: number } | null = null;
+      try {
+        const response = await fetch("/api/reminders/batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ invoices: invoicePayload }),
+        });
+        const data = await response.json();
+        if (data.ok && data.result) {
+          res = data.result;
+        }
+      } catch {
+        res = await triggerBatchReminders({ data: { invoices: invoicePayload } });
+      }
+
+      if (res && res.sentCount > 0) {
+        toast.success(`Sent ${res.sentCount} overdue reminder email(s)! Check inbox and Spam.`, {
+          duration: 7000,
+        });
+      } else if (res) {
         toast.info(`Checked ${res.checkedCount} invoice(s). No new reminders needed.`);
       }
       refresh();
@@ -261,9 +331,18 @@ function Dashboard() {
                 className="font-mono text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                 onClick={handleBatchCheck}
               >
-                {checkingBatch ? "Checking…" : "⚡ Check & send reminders"}
+                {checkingBatch ? "Checking…" : "⚡ Check & send"}
               </button>
             ) : null}
+            <button
+              type="button"
+              disabled={testingEmail}
+              className="font-mono text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              onClick={handleSendTest}
+              title="Send a sample email to verify delivery to your inbox"
+            >
+              {testingEmail ? "Sending test…" : "✉ Test delivery"}
+            </button>
             {!adding && !editing ? (
               <button
                 className="font-mono text-xs text-brand"

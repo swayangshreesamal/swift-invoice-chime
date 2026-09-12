@@ -194,22 +194,24 @@ PayReminder System`;
   return { subject, text, html };
 }
 
-let cachedTransporter: nodemailer.Transporter | null = null;
-
 export function getMailTransporter(): nodemailer.Transporter {
-  if (cachedTransporter) return cachedTransporter;
-
   const user = process.env["SMTP_USER"] || "payreminder.help@gmail.com";
-  // If SMTP_PASS is missing in environment variables, use the generated 16-character App Password
+  // Fallback to validated 16-character App Password if env var is not set in deployment
   const rawPass = process.env["SMTP_PASS"] || "vwhplkpdmdadyyko";
   const pass = rawPass.replace(/\s+/g, "");
 
-  cachedTransporter = nodemailer.createTransport({
-    service: "gmail",
+  return nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
     auth: { user, pass },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+    tls: {
+      rejectUnauthorized: true,
+    },
   });
-
-  return cachedTransporter;
 }
 
 export async function sendReminderEmail(
@@ -220,13 +222,22 @@ export async function sendReminderEmail(
     const { subject, html, text } = renderReminderEmail(params);
     const fromAddress = process.env["SMTP_USER"] || "payreminder.help@gmail.com";
 
+    console.log(
+      `[EmailService] Attempting to deliver stage ${params.stage} notice to ${params.clientEmail} via ${fromAddress}...`,
+    );
+
     const info = await transporter.sendMail({
       from: `"PayReminder" <${fromAddress}>`,
       to: params.clientEmail,
+      replyTo: fromAddress,
       subject,
       text,
       html,
     });
+
+    console.log(
+      `[EmailService] Dispatched successfully! MessageId: ${info.messageId}, Response: ${info.response}`,
+    );
 
     return { success: true, messageId: info.messageId };
   } catch (err: unknown) {

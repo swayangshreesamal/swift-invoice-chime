@@ -69,6 +69,94 @@ export default {
       }
     }
 
+    // Direct manual reminder trigger endpoint (called by frontend button clicks)
+    if (url.pathname === "/api/reminders/send" && request.method === "POST") {
+      try {
+        const body = (await request.json()) as any;
+        const invoiceId = body.invoiceId || body.id;
+        const stage = Number(body.stage) as 3 | 7 | 14;
+
+        if (!invoiceId || !stage) {
+          return new Response(
+            JSON.stringify({ success: false, error: "Missing invoiceId or stage" }),
+            { status: 400, headers: { "content-type": "application/json" } },
+          );
+        }
+
+        const { sendManualInvoiceReminder } = await import("./lib/reminder-runner.server");
+        const result = await sendManualInvoiceReminder(invoiceId, stage, body);
+        return new Response(JSON.stringify(result), {
+          status: result.success ? 200 : 400,
+          headers: { "content-type": "application/json" },
+        });
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err.message : String(err);
+        return new Response(JSON.stringify({ success: false, error }), {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        });
+      }
+    }
+
+    // Direct batch scan/trigger endpoint
+    if (url.pathname === "/api/reminders/batch" && request.method === "POST") {
+      try {
+        const body = (await request.json().catch(() => ({}))) as any;
+        const { processAllOverdueReminders } = await import("./lib/reminder-runner.server");
+        const result = await processAllOverdueReminders(body?.invoices);
+        return new Response(JSON.stringify({ ok: true, result }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err.message : String(err);
+        return new Response(JSON.stringify({ ok: false, error }), {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        });
+      }
+    }
+
+    // Email delivery test endpoint to verify SMTP credentials and inbox reception
+    if (url.pathname === "/api/reminders/test") {
+      try {
+        const recipient =
+          url.searchParams.get("to") ||
+          process.env["TEST_RECIPIENT"] ||
+          "sswayamsree@gmail.com";
+        const { sendReminderEmail } = await import("./lib/email-service.server");
+
+        const result = await sendReminderEmail({
+          clientName: "Valued Client",
+          clientEmail: recipient,
+          amount: 750,
+          dueDate: new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10),
+          description: "Verification of PayReminder email notification service",
+          stage: 3,
+          daysOverdue: 3,
+        });
+
+        return new Response(
+          JSON.stringify({
+            ok: result.success,
+            recipient,
+            result,
+            smtpUser: process.env["SMTP_USER"] || "payreminder.help@gmail.com",
+          }),
+          {
+            status: result.success ? 200 : 500,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err.message : String(err);
+        return new Response(JSON.stringify({ ok: false, error }), {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        });
+      }
+    }
+
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
