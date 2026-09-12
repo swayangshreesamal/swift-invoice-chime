@@ -347,10 +347,54 @@ function Dashboard() {
       );
       refresh();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to send reminder");
+      toast.error(err instanceof Error ? err.message : "Failed to trigger reminder");
     } finally {
       setSendingKey(null);
     }
+  }
+
+  function getReminderText(invoice: InvoiceRow) {
+    const payee =
+      profileQuery.data?.full_name ||
+      defaultFullName ||
+      user?.email?.split("@")[0] ||
+      "Freelancer";
+    const payment =
+      invoice.payment_details ||
+      profileQuery.data?.payment_details ||
+      defaultPaymentDetails ||
+      "";
+    return `Hi ${invoice.client_name},
+
+Hope you are having a good week!
+
+Just a gentle follow-up regarding the invoice for ${formatMoney(Number(invoice.amount))}, which was due on ${invoice.due_date}.
+
+Payment Details:
+${payment || "Please let me know if you need bank or remittance details."}
+
+Thank you,
+${payee}`;
+  }
+
+  function handleOpenGmail(invoice: InvoiceRow) {
+    const subject = `Invoice Reminder: ${invoice.client_name} (${formatMoney(Number(invoice.amount))})`;
+    const body = getReminderText(invoice);
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(invoice.client_email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(gmailUrl, "_blank", "noopener,noreferrer");
+    toast.success("Opening reminder draft in Gmail!");
+  }
+
+  function handleOpenWhatsApp(invoice: InvoiceRow) {
+    const text = getReminderText(invoice);
+    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    window.open(waUrl, "_blank", "noopener,noreferrer");
+  }
+
+  function handleCopyReminder(invoice: InvoiceRow) {
+    const text = getReminderText(invoice);
+    navigator.clipboard.writeText(text);
+    toast.success("Reminder text copied to clipboard!");
   }
 
   async function handleBatchCheck() {
@@ -727,49 +771,81 @@ function Dashboard() {
                 ) : null}
 
                 {!isPaid ? (
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/50 pt-2.5">
-                    <span className="font-mono text-[11px] text-muted-foreground">
-                      Send email reminder:
-                    </span>
-                    <div className="flex items-center gap-1.5">
+                  <div className="mt-3 border-t border-border/50 pt-2.5 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-mono text-[11px] text-muted-foreground">
+                        Send email reminder:
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={sendingKey === `${invoice.id}-3`}
+                          onClick={() => handleSendSingle(invoice, 3)}
+                          className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors disabled:opacity-50 ${
+                            sent.some((r) => r.stage === 3)
+                              ? "border-brand/40 bg-brand-soft/40 text-brand font-medium"
+                              : "border-border hover:bg-muted text-foreground"
+                          }`}
+                          title="3 days overdue reminder (Polite)"
+                        >
+                          {sendingKey === `${invoice.id}-3` ? "Sending…" : "3d polite"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={sendingKey === `${invoice.id}-7`}
+                          onClick={() => handleSendSingle(invoice, 7)}
+                          className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors disabled:opacity-50 ${
+                            sent.some((r) => r.stage === 7)
+                              ? "border-amber-500/40 bg-amber-500/10 text-amber-600 font-medium"
+                              : "border-border hover:bg-muted text-foreground"
+                          }`}
+                          title="7 days overdue reminder (Firmer)"
+                        >
+                          {sendingKey === `${invoice.id}-7` ? "Sending…" : "7d firmer"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={sendingKey === `${invoice.id}-14`}
+                          onClick={() => handleSendSingle(invoice, 14)}
+                          className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors disabled:opacity-50 ${
+                            sent.some((r) => r.stage === 14)
+                              ? "border-destructive/40 bg-destructive/10 text-destructive font-medium"
+                              : "border-border hover:bg-muted text-foreground"
+                          }`}
+                          title="14 days overdue reminder (Final notice)"
+                        >
+                          {sendingKey === `${invoice.id}-14` ? "Sending…" : "14d final"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 text-[11px] text-muted-foreground font-mono">
+                      <span>Or send yourself:</span>
                       <button
                         type="button"
-                        disabled={sendingKey === `${invoice.id}-3`}
-                        onClick={() => handleSendSingle(invoice, 3)}
-                        className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors disabled:opacity-50 ${
-                          sent.some((r) => r.stage === 3)
-                            ? "border-brand/40 bg-brand-soft/40 text-brand font-medium"
-                            : "border-border hover:bg-muted text-foreground"
-                        }`}
-                        title="3 days overdue reminder (Polite)"
+                        onClick={() => handleOpenGmail(invoice)}
+                        className="hover:text-brand hover:underline transition-colors flex items-center gap-1"
+                        title="Open pre-filled draft in your personal Gmail (100% inbox deliverability)"
                       >
-                        {sendingKey === `${invoice.id}-3` ? "Sending…" : "3d polite"}
+                        ✉ Gmail
                       </button>
+                      <span>·</span>
                       <button
                         type="button"
-                        disabled={sendingKey === `${invoice.id}-7`}
-                        onClick={() => handleSendSingle(invoice, 7)}
-                        className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors disabled:opacity-50 ${
-                          sent.some((r) => r.stage === 7)
-                            ? "border-amber-500/40 bg-amber-500/10 text-amber-600 font-medium"
-                            : "border-border hover:bg-muted text-foreground"
-                        }`}
-                        title="7 days overdue reminder (Firmer)"
+                        onClick={() => handleOpenWhatsApp(invoice)}
+                        className="hover:text-emerald-600 hover:underline transition-colors flex items-center gap-1"
+                        title="Send reminder via WhatsApp"
                       >
-                        {sendingKey === `${invoice.id}-7` ? "Sending…" : "7d firmer"}
+                        💬 WhatsApp
                       </button>
+                      <span>·</span>
                       <button
                         type="button"
-                        disabled={sendingKey === `${invoice.id}-14`}
-                        onClick={() => handleSendSingle(invoice, 14)}
-                        className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors disabled:opacity-50 ${
-                          sent.some((r) => r.stage === 14)
-                            ? "border-destructive/40 bg-destructive/10 text-destructive font-medium"
-                            : "border-border hover:bg-muted text-foreground"
-                        }`}
-                        title="14 days overdue reminder (Final notice)"
+                        onClick={() => handleCopyReminder(invoice)}
+                        className="hover:text-foreground hover:underline transition-colors flex items-center gap-1"
+                        title="Copy reminder text to clipboard"
                       >
-                        {sendingKey === `${invoice.id}-14` ? "Sending…" : "14d final"}
+                        📋 Copy
                       </button>
                     </div>
                   </div>

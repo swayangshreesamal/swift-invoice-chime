@@ -274,7 +274,7 @@ ${payee}
   }
 
   // Stage 14: Final Notice
-  const subject = `FINAL NOTICE: Immediate payment required for invoice (${formattedAmount})`;
+  const subject = `Final Notice: Immediate payment required for invoice (${formattedAmount})`;
   const lateFeeText = lateFee?.trim()
     ? `\n• LATE FEE NOTICE: A late fee of ${lateFee.trim()} applies as outlined in payment terms if not settled within 48 hours.`
     : "";
@@ -335,7 +335,7 @@ ${payee}
 
     <!-- Highlighted Payment Instructions Box -->
     <div class="payment-highlight">
-      <div class="payment-title">🚨 Immediate Settlement Instructions</div>
+      <div class="payment-title">Immediate Settlement Instructions</div>
       <div class="payment-row"><strong>Who to pay:</strong> <span style="font-weight: 700; color: #0f172a;">${escapeHtml(payee)}</span></div>
       <div class="payment-row"><strong>Total Overdue:</strong> <span style="font-weight: 700; color: #0f172a;">${formattedAmount}</span></div>
       <div class="payment-row">
@@ -346,7 +346,7 @@ ${payee}
         lateFee?.trim()
           ? `
       <div class="late-fee-box">
-        ⚠️ <strong>Late Fee Notice:</strong> A late fee of <u>${escapeHtml(lateFee.trim())}</u> applies if this balance is not settled within 48 hours.
+        <strong>Late Fee Notice:</strong> A late fee of <u>${escapeHtml(lateFee.trim())}</u> applies if this balance is not settled within 48 hours.
       </div>`
           : ""
       }
@@ -409,7 +409,6 @@ export async function sendReminderEmail(
         text,
         headers: {
           "X-Entity-Ref-ID": `invoice-stage-${params.stage}`,
-          "X-Priority": params.stage === 14 ? "1" : "3",
         },
       });
 
@@ -445,12 +444,6 @@ export async function sendReminderEmail(
       subject,
       text,
       html,
-      headers: {
-        "List-Unsubscribe": `<mailto:${fromAddress}?subject=Unsubscribe>`,
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        "X-Auto-Response-Suppress": "OOF, AutoReply",
-        "X-Priority": params.stage === 14 ? "1" : "3",
-      },
     });
 
     console.log(
