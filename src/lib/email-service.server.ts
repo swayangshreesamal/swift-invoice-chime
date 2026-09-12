@@ -1,6 +1,17 @@
 import nodemailer from "nodemailer";
+import { Resend } from "resend";
+
+// Automatically load .env.local if running in local Node scripts/dev without Vite/Nitro
+try {
+  if (typeof process !== "undefined" && typeof (process as any).loadEnvFile === "function") {
+    (process as any).loadEnvFile(".env.local");
+  }
+} catch {
+  // Ignored if file doesn't exist or already loaded by environment
+}
 
 export type ReminderStage = 3 | 7 | 14;
+
 
 export interface ReminderEmailParams {
   clientName: string;
@@ -374,14 +385,57 @@ export function getMailTransporter(): nodemailer.Transporter {
 
 export async function sendReminderEmail(
   params: ReminderEmailParams,
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
+): Promise<{ success: boolean; messageId?: string; error?: string; provider?: "resend" | "smtp" }> {
+  const { subject, html, text } = renderReminderEmail(params);
+
+  // 1. Primary Engine: Resend API (Inbox deliverability)
+  const resendApiKey = process.env["RESEND_API_KEY"];
+  if (resendApiKey) {
+    try {
+      const resend = new Resend(resendApiKey);
+      const resendFrom = process.env["RESEND_FROM"] || "PayReminder <onboarding@resend.dev>";
+      const replyToAddress = process.env["SMTP_USER"] || "payreminder.help@gmail.com";
+
+      console.log(
+        `[EmailService] Attempting delivery to ${params.clientEmail} via Resend (${resendFrom})...`,
+      );
+
+      const response = await resend.emails.send({
+        from: resendFrom,
+        to: params.clientEmail,
+        replyTo: replyToAddress,
+        subject,
+        html,
+        text,
+        headers: {
+          "X-Entity-Ref-ID": `invoice-stage-${params.stage}`,
+          "X-Priority": params.stage === 14 ? "1" : "3",
+        },
+      });
+
+      if (!response.error && response.data?.id) {
+        console.log(
+          `[EmailService] Resend dispatched successfully! MessageId: ${response.data.id}`,
+        );
+        return { success: true, messageId: response.data.id, provider: "resend" };
+      }
+
+      console.warn(
+        `[EmailService] Resend failed (${response.error?.name || "Error"}): ${response.error?.message}. Falling back to Gmail SMTP...`,
+      );
+    } catch (resendErr: unknown) {
+      const resendMsg = resendErr instanceof Error ? resendErr.message : String(resendErr);
+      console.warn(`[EmailService] Resend exception: ${resendMsg}. Falling back to Gmail SMTP...`);
+    }
+  }
+
+  // 2. Fallback Engine: Gmail SMTP (Nodemailer)
   try {
     const transporter = getMailTransporter();
-    const { subject, html, text } = renderReminderEmail(params);
     const fromAddress = process.env["SMTP_USER"] || "payreminder.help@gmail.com";
 
     console.log(
-      `[EmailService] Attempting to deliver stage ${params.stage} notice to ${params.clientEmail} via ${fromAddress}...`,
+      `[EmailService] Attempting delivery to ${params.clientEmail} via Gmail SMTP (${fromAddress})...`,
     );
 
     const info = await transporter.sendMail({
@@ -400,10 +454,10 @@ export async function sendReminderEmail(
     });
 
     console.log(
-      `[EmailService] Dispatched successfully! MessageId: ${info.messageId}, Response: ${info.response}`,
+      `[EmailService] Gmail SMTP dispatched successfully! MessageId: ${info.messageId}, Response: ${info.response}`,
     );
 
-    return { success: true, messageId: info.messageId };
+    return { success: true, messageId: info.messageId, provider: "smtp" };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error("[EmailService Error]:", errorMsg);
