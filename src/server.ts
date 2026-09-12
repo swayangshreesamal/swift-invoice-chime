@@ -134,6 +134,8 @@ export default {
           description: "Verification of PayReminder email notification service",
           stage: 3,
           daysOverdue: 3,
+          freelancerName: "PayReminder Partner",
+          paymentDetails: "PayPal: https://paypal.me/payreminder\nUPI ID: payreminder@okaxis\nBank Transfer: Routing #123456789, Acct #987654321",
         });
 
         return new Response(

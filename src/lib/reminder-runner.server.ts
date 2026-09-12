@@ -67,6 +67,8 @@ export interface InvoiceCandidate {
   due_date: string;
   description?: string | null;
   status?: string;
+  payment_details?: string | null;
+  freelancer_name?: string | null;
 }
 
 /**
@@ -88,7 +90,7 @@ export async function processAllOverdueReminders(
       const { data, error: invError } = await supabase
         .from("invoices")
         .select(
-          "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status",
+          "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status, payment_details",
         )
         .eq("status", "unpaid");
 
@@ -159,6 +161,8 @@ export async function processAllOverdueReminders(
         description: inv.description ?? null,
         stage,
         daysOverdue: overdue,
+        freelancerName: inv.freelancer_name ?? null,
+        paymentDetails: inv.payment_details ?? null,
       });
 
       if (emailRes.success) {
@@ -217,6 +221,10 @@ export interface ManualInvoicePayload {
   description?: string | null;
   userId?: string;
   user_id?: string;
+  paymentDetails?: string | null;
+  payment_details?: string | null;
+  freelancerName?: string | null;
+  freelancer_name?: string | null;
 }
 
 /**
@@ -238,30 +246,51 @@ export async function sendManualInvoiceReminder(
   let dueDate = (payload?.dueDate || payload?.due_date || "").trim();
   let description = payload?.description ?? null;
   let userId = payload?.userId || payload?.user_id;
+  let paymentDetails = (payload?.paymentDetails || payload?.payment_details || "").trim();
+  let freelancerName = (payload?.freelancerName || payload?.freelancer_name || "").trim();
 
-  // If email was not passed in payload, query database for details
-  if (!clientEmail) {
+  // If email or details were not passed in payload, query database for details
+  if (!clientEmail || !paymentDetails) {
     try {
       const { data: inv, error: invError } = await supabase
         .from("invoices")
         .select(
-          "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status",
+          "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status, payment_details",
         )
         .eq("id", invoiceId)
         .maybeSingle();
 
       if (inv) {
-        clientName = inv.client_name;
-        clientEmail = inv.client_email;
-        amount = Number(inv.amount);
-        dueDate = inv.due_date;
-        description = inv.description;
-        userId = inv.user_id;
+        if (!clientName) clientName = inv.client_name;
+        if (!clientEmail) clientEmail = inv.client_email;
+        if (amount === undefined) amount = Number(inv.amount);
+        if (!dueDate) dueDate = inv.due_date;
+        if (!description) description = inv.description;
+        if (!userId) userId = inv.user_id;
+        if (!paymentDetails && inv.payment_details) paymentDetails = inv.payment_details;
       } else if (invError) {
         console.warn("[sendManualInvoiceReminder] Supabase query returned error:", invError.message);
       }
     } catch (dbErr) {
       console.warn("[sendManualInvoiceReminder] Failed to query Supabase:", dbErr);
+    }
+  }
+
+  // If payment details or freelancer name still missing, try querying profile
+  if (userId && (!paymentDetails || !freelancerName)) {
+    try {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("full_name, payment_details")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (prof) {
+        if (!paymentDetails && prof.payment_details) paymentDetails = prof.payment_details;
+        if (!freelancerName && prof.full_name) freelancerName = prof.full_name;
+      }
+    } catch (profErr) {
+      console.warn("[sendManualInvoiceReminder] Could not query profile:", profErr);
     }
   }
 
@@ -280,6 +309,9 @@ export async function sendManualInvoiceReminder(
   if (amount === undefined || isNaN(amount)) {
     amount = 0;
   }
+  if (!freelancerName) {
+    freelancerName = "PayReminder Freelancer";
+  }
 
   const overdue = daysOverdue(dueDate);
 
@@ -291,6 +323,8 @@ export async function sendManualInvoiceReminder(
     description,
     stage,
     daysOverdue: Math.max(overdue, stage),
+    freelancerName,
+    paymentDetails,
   });
 
   if (!emailRes.success) {

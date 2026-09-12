@@ -19,6 +19,7 @@ export type Database = {
           id: string;
           invoice_date: string;
           paid_at: string | null;
+          payment_details: string | null;
           status: string;
           updated_at: string;
           user_id: string;
@@ -33,6 +34,7 @@ export type Database = {
           id?: string;
           invoice_date?: string;
           paid_at?: string | null;
+          payment_details?: string | null;
           status?: string;
           updated_at?: string;
           user_id: string;
@@ -47,6 +49,7 @@ export type Database = {
           id?: string;
           invoice_date?: string;
           paid_at?: string | null;
+          payment_details?: string | null;
           status?: string;
           updated_at?: string;
           user_id?: string;
@@ -57,7 +60,9 @@ export type Database = {
         Row: {
           created_at: string;
           email: string | null;
+          full_name: string | null;
           id: string;
+          payment_details: string | null;
           paypal_subscription_id: string | null;
           plan: string;
           updated_at: string;
@@ -65,7 +70,9 @@ export type Database = {
         Insert: {
           created_at?: string;
           email?: string | null;
+          full_name?: string | null;
           id: string;
+          payment_details?: string | null;
           paypal_subscription_id?: string | null;
           plan?: string;
           updated_at?: string;
@@ -73,7 +80,9 @@ export type Database = {
         Update: {
           created_at?: string;
           email?: string | null;
+          full_name?: string | null;
           id?: string;
+          payment_details?: string | null;
           paypal_subscription_id?: string | null;
           plan?: string;
           updated_at?: string;

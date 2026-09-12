@@ -13,6 +13,7 @@ export type InvoiceRow = {
   invoice_date: string;
   due_date: string;
   description: string | null;
+  payment_details?: string | null;
   status: string;
 };
 
@@ -23,6 +24,7 @@ const schema = z.object({
   invoice_date: z.string().min(1, "Invoice date is required"),
   due_date: z.string().min(1, "Due date is required"),
   description: z.string().trim().max(300).optional(),
+  payment_details: z.string().trim().max(1000).optional(),
 });
 
 function today() {
@@ -38,11 +40,13 @@ function inTwoWeeks() {
 export function InvoiceForm({
   userId,
   existing,
+  defaultPaymentDetails,
   onDone,
   onCancel,
 }: {
   userId: string;
   existing?: InvoiceRow;
+  defaultPaymentDetails?: string;
   onDone: () => void;
   onCancel?: () => void;
 }) {
@@ -52,6 +56,9 @@ export function InvoiceForm({
   const [invoiceDate, setInvoiceDate] = useState(existing?.invoice_date ?? today());
   const [dueDate, setDueDate] = useState(existing?.due_date ?? inTwoWeeks());
   const [description, setDescription] = useState(existing?.description ?? "");
+  const [paymentDetails, setPaymentDetails] = useState(
+    existing?.payment_details ?? defaultPaymentDetails ?? "",
+  );
   const [busy, setBusy] = useState(false);
 
   async function submit(event: React.FormEvent) {
@@ -63,6 +70,7 @@ export function InvoiceForm({
       invoice_date: invoiceDate,
       due_date: dueDate,
       description: description || undefined,
+      payment_details: paymentDetails || undefined,
     });
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Please check the form");
@@ -70,10 +78,27 @@ export function InvoiceForm({
     }
 
     setBusy(true);
-    const values = { ...parsed.data, description: parsed.data.description ?? null };
-    const { error } = existing
+    const values = {
+      ...parsed.data,
+      description: parsed.data.description ?? null,
+      payment_details: parsed.data.payment_details ?? null,
+    };
+
+    let { error } = existing
       ? await supabase.from("invoices").update(values).eq("id", existing.id)
       : await supabase.from("invoices").insert({ ...values, user_id: userId });
+
+    // Resilient fallback: if the payment_details column migration is still propagating, save without the column
+    if (error && error.message?.includes("payment_details")) {
+      console.warn("Database column payment_details not found. Falling back to core columns...");
+      const fallbackValues = { ...values };
+      delete (fallbackValues as any).payment_details;
+      const retry = existing
+        ? await supabase.from("invoices").update(fallbackValues).eq("id", existing.id)
+        : await supabase.from("invoices").insert({ ...fallbackValues, user_id: userId });
+      error = retry.error;
+    }
+
     setBusy(false);
 
     if (error) {
@@ -150,8 +175,30 @@ export function InvoiceForm({
           className="field-paper mt-1"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Brand design"
+          placeholder="Brand design & web development"
         />
+      </label>
+
+      {/* Payment Details Field */}
+      <label className="block">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+            <span>Payment details <span className="opacity-70">(how client should pay)</span></span>
+          </span>
+          {defaultPaymentDetails && !existing ? (
+            <span className="text-[10px] font-mono text-brand">Pre-filled from defaults</span>
+          ) : null}
+        </div>
+        <textarea
+          rows={2}
+          className="field-paper mt-1 font-sans text-xs leading-relaxed"
+          value={paymentDetails}
+          onChange={(e) => setPaymentDetails(e.target.value)}
+          placeholder="e.g. PayPal: https://paypal.me/yourname or UPI: yourname@okaxis or Bank: Wire Routing #123456, Acct #789012"
+        />
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Displayed in a prominent highlighted box in all 3d, 7d, and 14d reminder emails.
+        </p>
       </label>
       <div className="flex gap-2">
         <button type="submit" disabled={busy} className="btn-brand mt-1 flex-1 py-3.5 text-[15px]">

@@ -10,6 +10,7 @@ const invoiceSchema = z.object({
   invoice_date: z.string().min(1, "Invoice date is required"),
   due_date: z.string().min(1, "Due date is required"),
   description: z.string().trim().max(300).optional(),
+  payment_details: z.string().trim().max(1000).optional(),
 });
 
 // 2. Auth schema as defined in auth.tsx
@@ -225,12 +226,22 @@ test("Reminder email templates - renders 3d, 7d, and 14d templates with correct 
     amount: 1200,
     dueDate: "2026-09-01",
     description: "Design retainer",
+    freelancerName: "Jane Doe Design",
+    paymentDetails: "PayPal: https://paypal.me/janedoe or UPI: janedoe@upi",
     stage: 3,
     daysOverdue: 3,
   });
   assert.match(stage3.subject, /Friendly Reminder/i);
   assert.match(stage3.html, /\$1,200/);
+  assert.match(stage3.html, /Acme Studio/);
+  assert.match(stage3.html, /Design retainer/);
+  assert.match(stage3.html, /Jane Doe Design/);
+  assert.match(stage3.html, /paypal\.me\/janedoe/);
+  assert.match(stage3.html, /How &amp; Where to Pay|How & Where to Pay/);
+  assert.match(stage3.html, /Pay Online Now →/);
   assert.match(stage3.text, /gentle reminder/i);
+  assert.match(stage3.text, /Who to pay: Jane Doe Design/i);
+  assert.match(stage3.text, /HOW TO PAY/i);
 
   // Stage 7: Firmer
   const stage7 = renderReminderEmail({
@@ -239,12 +250,18 @@ test("Reminder email templates - renders 3d, 7d, and 14d templates with correct 
     amount: 1200,
     dueDate: "2026-09-01",
     description: "Design retainer",
+    freelancerName: "Jane Doe Design",
+    paymentDetails: "Bank Wire: Routing #021000021, Account #987654321",
     stage: 7,
     daysOverdue: 7,
   });
   assert.match(stage7.subject, /Second Notice.*7 days/i);
   assert.match(stage7.html, /Second Notice · 7 Days Overdue/i);
+  assert.match(stage7.html, /Jane Doe Design/);
+  assert.match(stage7.html, /Routing #021000021/);
   assert.match(stage7.text, /following up on our previous notice/i);
+  assert.match(stage7.text, /Who to pay: Jane Doe Design/i);
+  assert.match(stage7.text, /Account #987654321/);
 
   // Stage 14: Final notice
   const stage14 = renderReminderEmail({
@@ -253,10 +270,59 @@ test("Reminder email templates - renders 3d, 7d, and 14d templates with correct 
     amount: 1200,
     dueDate: "2026-09-01",
     description: "Design retainer",
+    freelancerName: "Jane Doe Design",
+    paymentDetails: "Pay immediately via https://pay.stripe.com/inv_123 or Wire Acct #987654321",
     stage: 14,
     daysOverdue: 14,
   });
   assert.match(stage14.subject, /FINAL NOTICE/i);
   assert.match(stage14.html, /Final Notice · 14 Days Overdue/i);
+  assert.match(stage14.html, /Immediate Settlement Instructions/i);
+  assert.match(stage14.html, /Jane Doe Design/);
+  assert.match(stage14.html, /pay\.stripe\.com\/inv_123/);
+  assert.match(stage14.html, /Pay Online Now →/);
   assert.match(stage14.text, /urgent and final notice/i);
+  assert.match(stage14.text, /Who to pay: Jane Doe Design/i);
+  assert.match(stage14.text, /HOW TO PAY/i);
 });
+
+test("Invoice validation - accepts optional payment_details and respects length limits", () => {
+  const validWithPayment = {
+    client_name: "Acme Corp",
+    client_email: "billing@acme.com",
+    amount: 1500,
+    invoice_date: "2026-09-01",
+    due_date: "2026-09-15",
+    payment_details: "PayPal: https://paypal.me/test | UPI: test@upi | Wire: 123456",
+  };
+  const result = invoiceSchema.safeParse(validWithPayment);
+  assert.equal(result.success, true);
+
+  const tooLong = {
+    ...validWithPayment,
+    payment_details: "x".repeat(1001),
+  };
+  const longResult = invoiceSchema.safeParse(tooLong);
+  assert.equal(longResult.success, false);
+});
+
+test("Reminder email templates - provides graceful fallback when payment details or freelancer name omitted", async () => {
+  const { renderReminderEmail } = await import("./src/lib/email-service.server.ts");
+
+  const email = renderReminderEmail({
+    clientName: "Acme Studio",
+    clientEmail: "billing@acme.com",
+    amount: 1200,
+    dueDate: "2026-09-01",
+    stage: 3,
+    daysOverdue: 3,
+  });
+
+  // Default fallback for freelancer name is "Freelancer / Service Provider"
+  assert.match(email.html, /Freelancer \/ Service Provider/);
+  assert.match(email.text, /Freelancer \/ Service Provider/);
+  // Default fallback for payment details informs client to reply
+  assert.match(email.html, /Please reply directly to this email to receive/i);
+  assert.match(email.text, /Please reply directly to this email to receive/i);
+});
+

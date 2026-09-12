@@ -70,11 +70,45 @@ function Dashboard() {
     queryKey: ["profile", user?.id],
     enabled: !!user,
     queryFn: async () => {
-      const { data, error } = await supabase.from("profiles").select("plan").maybeSingle();
-      if (error) throw error;
-      return data as { plan: string } | null;
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("plan, payment_details, full_name")
+          .maybeSingle();
+        if (!error && data) {
+          return {
+            plan: data.plan || "free",
+            payment_details:
+              data.payment_details || (user?.user_metadata?.payment_details as string) || "",
+            full_name: data.full_name || (user?.user_metadata?.full_name as string) || "",
+          };
+        }
+      } catch (e) {
+        console.warn("Could not query profiles table directly:", e);
+      }
+      return {
+        plan: "free",
+        payment_details: (user?.user_metadata?.payment_details as string) || "",
+        full_name: (user?.user_metadata?.full_name as string) || "",
+      };
     },
   });
+
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [defaultFullName, setDefaultFullName] = useState("");
+  const [defaultPaymentDetails, setDefaultPaymentDetails] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  useEffect(() => {
+    if (profileQuery.data) {
+      if (profileQuery.data.full_name !== undefined) {
+        setDefaultFullName(profileQuery.data.full_name);
+      }
+      if (profileQuery.data.payment_details !== undefined) {
+        setDefaultPaymentDetails(profileQuery.data.payment_details);
+      }
+    }
+  }, [profileQuery.data]);
 
   const invoices = invoicesQuery.data ?? [];
   const reminders = remindersQuery.data ?? [];
@@ -86,6 +120,43 @@ function Dashboard() {
   function refresh() {
     queryClient.invalidateQueries({ queryKey: ["invoices", user?.id] });
     queryClient.invalidateQueries({ queryKey: ["reminders", user?.id] });
+    queryClient.invalidateQueries({ queryKey: ["profile", user?.id] });
+  }
+
+  async function handleSaveProfileDefaults(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user) return;
+    setSavingProfile(true);
+    try {
+      // 1. Save to Auth user metadata (always accessible)
+      await supabase.auth.updateUser({
+        data: {
+          full_name: defaultFullName.trim(),
+          payment_details: defaultPaymentDetails.trim(),
+        },
+      });
+
+      // 2. Also try updating profiles table
+      try {
+        await supabase
+          .from("profiles")
+          .update({
+            full_name: defaultFullName.trim(),
+            payment_details: defaultPaymentDetails.trim(),
+          })
+          .eq("id", user.id);
+      } catch (profileErr) {
+        console.warn("Profiles table update skipped/failed:", profileErr);
+      }
+
+      toast.success("Default payment details saved!");
+      setEditingProfile(false);
+      refresh();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to save payment details");
+    } finally {
+      setSavingProfile(false);
+    }
   }
 
   async function markPaid(invoice: InvoiceRow) {
@@ -152,6 +223,14 @@ function Dashboard() {
     setSendingKey(key);
     try {
       const targetUserId = invoice.user_id || user?.id || "";
+      const resolvedPayment =
+        invoice.payment_details || profileQuery.data?.payment_details || defaultPaymentDetails || "";
+      const resolvedName =
+        profileQuery.data?.full_name ||
+        defaultFullName ||
+        user?.email?.split("@")[0] ||
+        "PayReminder Freelancer";
+
       const payload = {
         invoiceId: invoice.id,
         stage,
@@ -165,6 +244,10 @@ function Dashboard() {
         description: invoice.description,
         userId: targetUserId,
         user_id: targetUserId,
+        paymentDetails: resolvedPayment,
+        payment_details: resolvedPayment,
+        freelancerName: resolvedName,
+        freelancer_name: resolvedName,
       };
 
       let success = false;
@@ -236,6 +319,13 @@ function Dashboard() {
     setCheckingBatch(true);
     toast.info("Scanning invoices and dispatching pending reminders…");
     try {
+      const resolvedPayment = profileQuery.data?.payment_details || defaultPaymentDetails || "";
+      const resolvedName =
+        profileQuery.data?.full_name ||
+        defaultFullName ||
+        user?.email?.split("@")[0] ||
+        "PayReminder Freelancer";
+
       const invoicePayload = unpaid.map((inv) => ({
         id: inv.id,
         user_id: inv.user_id || user?.id,
@@ -245,6 +335,8 @@ function Dashboard() {
         due_date: inv.due_date,
         description: inv.description,
         status: inv.status,
+        payment_details: inv.payment_details || resolvedPayment,
+        freelancer_name: resolvedName,
       }));
 
       let res: { sentCount: number; checkedCount: number } | null = null;
@@ -321,7 +413,100 @@ function Dashboard() {
           </p>
         </div>
 
-        <div className="mt-4 flex items-baseline justify-between">
+        {/* Default Payment Details Card */}
+        <div className="mt-4 rounded-2xl border border-border bg-card/70 p-4 transition-all">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xl">💳</span>
+              <div>
+                <h3 className="text-sm font-semibold tracking-tight">Your Default Payment Details</h3>
+                <p className="text-xs text-muted-foreground">
+                  Shown clearly in all reminder emails so clients know who and how to pay.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEditingProfile((prev) => !prev)}
+              className="rounded-lg border border-border px-2.5 py-1 font-mono text-xs text-brand hover:bg-brand-soft/40 transition-colors"
+            >
+              {editingProfile ? "Close" : defaultPaymentDetails ? "Edit details" : "+ Add details"}
+            </button>
+          </div>
+
+          {editingProfile ? (
+            <form onSubmit={handleSaveProfileDefaults} className="mt-4 space-y-3 border-t border-border/50 pt-3">
+              <div>
+                <label className="block text-xs font-medium text-foreground">
+                  Your Name or Business Name <span className="text-muted-foreground font-normal">(Who to pay)</span>
+                </label>
+                <input
+                  type="text"
+                  value={defaultFullName}
+                  onChange={(e) => setDefaultFullName(e.target.value)}
+                  placeholder="e.g. Alex Rivera or Rivera Design Studio"
+                  className="input-paper mt-1 w-full text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-foreground">
+                  Default Payment Instructions <span className="text-muted-foreground font-normal">(How to pay)</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={defaultPaymentDetails}
+                  onChange={(e) => setDefaultPaymentDetails(e.target.value)}
+                  placeholder="e.g. PayPal: https://paypal.me/alexrivera or UPI: alex@okhdfcbank or Bank: Chase Checking Acct #123456789, Routing #987654321"
+                  className="input-paper mt-1 w-full font-mono text-xs leading-relaxed"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  💡 Tip: If you include a link (e.g. https://paypal.me/... or Stripe payment link), reminder emails will include a 1-click &ldquo;Pay Online Now&rdquo; button!
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setEditingProfile(false)}
+                  className="btn-quiet px-3 py-1.5 text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingProfile}
+                  className="btn-brand px-4 py-1.5 text-xs font-medium"
+                >
+                  {savingProfile ? "Saving…" : "Save Default Details"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="mt-3 rounded-xl bg-muted/40 p-3 border border-border/30 text-xs">
+              <div className="flex flex-wrap items-baseline gap-2">
+                <span className="font-semibold text-foreground">Who to pay:</span>
+                <span className="text-muted-foreground font-medium">
+                  {defaultFullName || user?.email?.split("@")[0] || "PayReminder Freelancer"}
+                </span>
+              </div>
+              <div className="mt-1.5">
+                <span className="font-semibold text-foreground">How to pay:</span>
+                {defaultPaymentDetails ? (
+                  <div className="mt-1 whitespace-pre-wrap rounded bg-background/80 p-2 font-mono text-[11px] text-foreground border border-border/40">
+                    {defaultPaymentDetails}
+                  </div>
+                ) : (
+                  <span className="ml-1 text-muted-foreground italic">
+                    No payment details set yet. Click &ldquo;+ Add details&rdquo; to add your PayPal, UPI, or bank wire.
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 flex items-baseline justify-between">
           <h2 className="font-display text-xl font-semibold tracking-tight">Your invoices</h2>
           <div className="flex items-center gap-3">
             {unpaid.length > 0 ? (
@@ -364,6 +549,7 @@ function Dashboard() {
           <div className="mt-3">
             <InvoiceForm
               userId={user.id}
+              defaultPaymentDetails={profileQuery.data?.payment_details || defaultPaymentDetails}
               onDone={() => {
                 setAdding(false);
                 refresh();
@@ -378,6 +564,7 @@ function Dashboard() {
             <InvoiceForm
               userId={user.id}
               existing={editing}
+              defaultPaymentDetails={profileQuery.data?.payment_details || defaultPaymentDetails}
               onDone={() => {
                 setEditing(null);
                 refresh();
@@ -420,9 +607,19 @@ function Dashboard() {
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {invoice.description || invoice.client_email}
                     </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Due {formatDate(invoice.due_date)}
-                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        Due {formatDate(invoice.due_date)}
+                      </span>
+                      {invoice.payment_details ? (
+                        <span
+                          className="rounded bg-muted/80 px-1.5 py-0.5 font-mono text-[10px] text-foreground/80 border border-border/50"
+                          title="Custom payment details specified for this invoice"
+                        >
+                          💳 Custom payment info
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="text-right">
                     <p className="font-display text-lg font-semibold">
