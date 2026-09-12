@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { daysOverdue } from "./format";
 import { sendReminderEmail, type ReminderStage } from "./email-service.server";
+import { unpackInvoiceMetadata } from "./invoice-metadata";
 import type { Database } from "@/integrations/supabase/types";
 
 function isNewSupabaseApiKey(value: string): boolean {
@@ -91,23 +92,22 @@ export async function processAllOverdueReminders(
     try {
       const { data, error: invError } = await supabase
         .from("invoices")
-        .select(
-          "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status, payment_details, late_fee, client_notes",
-        )
+        .select("*")
         .eq("status", "unpaid");
 
       if (invError) {
-        console.error("[ReminderRunner] Error fetching invoices with late_fee:", invError);
-        // Fallback without new columns if migration is pending
-        const { data: fallbackData } = await supabase
-          .from("invoices")
-          .select(
-            "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status, payment_details",
-          )
-          .eq("status", "unpaid");
-        invoices = (fallbackData ?? []) as InvoiceCandidate[];
+        console.error("[ReminderRunner] Error fetching invoices from Supabase:", invError);
       } else {
-        invoices = (data ?? []) as InvoiceCandidate[];
+        invoices = (data ?? []).map((i) => {
+          const unpacked = unpackInvoiceMetadata(i.description);
+          return {
+            ...i,
+            description: unpacked.cleanDescription || i.description,
+            payment_details: i.payment_details || unpacked.payment_details || null,
+            late_fee: (i as any).late_fee || unpacked.late_fee || null,
+            client_notes: (i as any).client_notes || unpacked.client_notes || null,
+          };
+        }) as InvoiceCandidate[];
       }
     } catch (e) {
       console.warn("[ReminderRunner] Failed to fetch invoices from Supabase:", e);
@@ -270,21 +270,24 @@ export async function sendManualInvoiceReminder(
     try {
       const { data: inv, error: invError } = await supabase
         .from("invoices")
-        .select(
-          "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status, payment_details, late_fee",
-        )
+        .select("*")
         .eq("id", invoiceId)
         .maybeSingle();
 
       if (inv) {
+        const unpacked = unpackInvoiceMetadata(inv.description);
         if (!clientName) clientName = inv.client_name;
         if (!clientEmail) clientEmail = inv.client_email;
         if (amount === undefined) amount = Number(inv.amount);
         if (!dueDate) dueDate = inv.due_date;
-        if (!description) description = inv.description;
+        if (!description) description = unpacked.cleanDescription || inv.description;
         if (!userId) userId = inv.user_id;
-        if (!paymentDetails && inv.payment_details) paymentDetails = inv.payment_details;
-        if (!lateFee && (inv as any).late_fee) lateFee = (inv as any).late_fee;
+        if (!paymentDetails) {
+          paymentDetails = (inv as any).payment_details || unpacked.payment_details || "";
+        }
+        if (!lateFee) {
+          lateFee = (inv as any).late_fee || unpacked.late_fee || "";
+        }
       } else if (invError) {
         console.warn("[sendManualInvoiceReminder] Supabase query returned error:", invError.message);
       }
@@ -298,13 +301,17 @@ export async function sendManualInvoiceReminder(
     try {
       const { data: prof } = await supabase
         .from("profiles")
-        .select("full_name, payment_details")
+        .select("*")
         .eq("id", userId)
         .maybeSingle();
 
       if (prof) {
-        if (!paymentDetails && prof.payment_details) paymentDetails = prof.payment_details;
-        if (!freelancerName && prof.full_name) freelancerName = prof.full_name;
+        if (!paymentDetails && (prof as any).payment_details) {
+          paymentDetails = (prof as any).payment_details;
+        }
+        if (!freelancerName && (prof as any).full_name) {
+          freelancerName = (prof as any).full_name;
+        }
       }
     } catch (profErr) {
       console.warn("[sendManualInvoiceReminder] Could not query profile:", profErr);

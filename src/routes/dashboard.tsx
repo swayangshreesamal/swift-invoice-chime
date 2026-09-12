@@ -1,12 +1,13 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { InvoiceForm, type InvoiceRow } from "@/components/InvoiceForm";
 import { SiteHeader } from "@/components/SiteHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { daysOverdue, formatDate, formatMoney } from "@/lib/format";
+import { resolveInvoice } from "@/lib/invoice-metadata";
 import { triggerBatchReminders, triggerManualReminder } from "@/lib/reminder-actions";
 import { useAuth } from "@/lib/use-auth";
 
@@ -41,7 +42,9 @@ function Dashboard() {
   const [showProWelcome, setShowProWelcome] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) navigate({ to: "/auth" });
+    if (!loading && !user) {
+      navigate({ to: "/auth" });
+    }
   }, [user, loading, navigate]);
 
   useEffect(() => {
@@ -82,26 +85,37 @@ function Dashboard() {
     queryKey: ["profile", user?.id],
     enabled: !!user,
     queryFn: async () => {
+      let plan = "free";
+      let payment_details = (user?.user_metadata?.payment_details as string) || "";
+      let full_name = (user?.user_metadata?.full_name as string) || "";
+
       try {
         const { data, error } = await supabase
           .from("profiles")
           .select("plan, payment_details, full_name")
           .maybeSingle();
         if (!error && data) {
-          return {
-            plan: data.plan || "free",
-            payment_details:
-              data.payment_details || (user?.user_metadata?.payment_details as string) || "",
-            full_name: data.full_name || (user?.user_metadata?.full_name as string) || "",
-          };
+          plan = data.plan || "free";
+          if (data.payment_details) payment_details = data.payment_details;
+          if (data.full_name) full_name = data.full_name;
+          return { plan, payment_details, full_name };
+        }
+
+        // Fallback to querying just plan if extended columns don't exist
+        const { data: planData } = await supabase
+          .from("profiles")
+          .select("plan")
+          .maybeSingle();
+        if (planData?.plan) {
+          plan = planData.plan;
         }
       } catch (e) {
         console.warn("Could not query profiles table directly:", e);
       }
       return {
-        plan: "free",
-        payment_details: (user?.user_metadata?.payment_details as string) || "",
-        full_name: (user?.user_metadata?.full_name as string) || "",
+        plan,
+        payment_details,
+        full_name,
       };
     },
   });
@@ -122,7 +136,12 @@ function Dashboard() {
     }
   }, [profileQuery.data]);
 
-  const invoices = invoicesQuery.data ?? [];
+  const rawInvoices = invoicesQuery.data ?? [];
+  const resolvedPaymentDefault = profileQuery.data?.payment_details || defaultPaymentDetails;
+  const invoices = useMemo(
+    () => rawInvoices.map((inv) => resolveInvoice(inv, resolvedPaymentDefault)),
+    [rawInvoices, resolvedPaymentDefault],
+  );
   const reminders = remindersQuery.data ?? [];
   const plan = profileQuery.data?.plan ?? "free";
   const unpaid = invoices.filter((i) => i.status === "unpaid");

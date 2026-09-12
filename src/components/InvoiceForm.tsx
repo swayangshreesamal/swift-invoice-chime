@@ -3,6 +3,12 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { supabase } from "@/integrations/supabase/client";
+import {
+  packInvoiceMetadata,
+  unpackInvoiceMetadata,
+  saveLocalInvoiceMeta,
+  getLocalInvoiceMeta,
+} from "@/lib/invoice-metadata";
 
 export type InvoiceRow = {
   id: string;
@@ -54,17 +60,30 @@ export function InvoiceForm({
   onDone: () => void;
   onCancel?: () => void;
 }) {
+  const initialUnpacked = unpackInvoiceMetadata(existing?.description);
+  const initialLocal = existing?.id ? getLocalInvoiceMeta(existing.id) : {};
+
   const [clientName, setClientName] = useState(existing?.client_name ?? "");
   const [clientEmail, setClientEmail] = useState(existing?.client_email ?? "");
   const [amount, setAmount] = useState(existing ? String(existing.amount) : "");
   const [invoiceDate, setInvoiceDate] = useState(existing?.invoice_date ?? today());
   const [dueDate, setDueDate] = useState(existing?.due_date ?? inTwoWeeks());
-  const [description, setDescription] = useState(existing?.description ?? "");
-  const [paymentDetails, setPaymentDetails] = useState(
-    existing?.payment_details ?? defaultPaymentDetails ?? "",
+  const [description, setDescription] = useState(
+    initialUnpacked.cleanDescription || existing?.description || "",
   );
-  const [clientNotes, setClientNotes] = useState(existing?.client_notes ?? "");
-  const [lateFee, setLateFee] = useState(existing?.late_fee ?? "");
+  const [paymentDetails, setPaymentDetails] = useState(
+    existing?.payment_details ??
+      initialUnpacked.payment_details ??
+      initialLocal.payment_details ??
+      defaultPaymentDetails ??
+      "",
+  );
+  const [clientNotes, setClientNotes] = useState(
+    existing?.client_notes ?? initialUnpacked.client_notes ?? initialLocal.client_notes ?? "",
+  );
+  const [lateFee, setLateFee] = useState(
+    existing?.late_fee ?? initialUnpacked.late_fee ?? initialLocal.late_fee ?? "",
+  );
   const [busy, setBusy] = useState(false);
 
   async function submit(event: React.FormEvent) {
@@ -94,23 +113,49 @@ export function InvoiceForm({
       late_fee: parsed.data.late_fee ?? null,
     };
 
-    let { error } = existing
-      ? await supabase.from("invoices").update(values).eq("id", existing.id)
-      : await supabase.from("invoices").insert({ ...values, user_id: userId });
+    // 1. Attempt standard insert/update with all dedicated columns
+    let result = existing
+      ? await supabase.from("invoices").update(values).eq("id", existing.id).select()
+      : await supabase.from("invoices").insert({ ...values, user_id: userId }).select();
 
-    // Resilient fallback: if any new column is still propagating in Supabase cache, fallback to core fields
-    if (error && (error.message?.includes("client_notes") || error.message?.includes("late_fee") || error.message?.includes("payment_details"))) {
-      console.warn("Database column mismatch detected. Falling back cleanly...");
-      const fallbackValues = { ...values };
-      delete (fallbackValues as any).client_notes;
-      delete (fallbackValues as any).late_fee;
-      if (error.message?.includes("payment_details")) {
-        delete (fallbackValues as any).payment_details;
-      }
+    let error = result.error;
+    let savedInvoice = result.data?.[0];
+
+    // 2. Resilient fallback: if extended columns fail in Supabase schema cache, fallback to core fields with packed metadata
+    if (
+      error &&
+      (error.message?.includes("column") ||
+        error.message?.includes("schema cache") ||
+        (error as any).code === "PGRST204" ||
+        error.message?.includes("payment_details") ||
+        error.message?.includes("client_notes") ||
+        error.message?.includes("late_fee"))
+    ) {
+      console.warn(
+        "Extended columns not present in Supabase schema cache. Falling back to core columns + packed metadata.",
+      );
+
+      const packedDesc = packInvoiceMetadata(parsed.data.description, {
+        payment_details: parsed.data.payment_details,
+        client_notes: parsed.data.client_notes,
+        late_fee: parsed.data.late_fee,
+      });
+
+      const coreValues = {
+        client_name: parsed.data.client_name,
+        client_email: parsed.data.client_email,
+        amount: parsed.data.amount,
+        invoice_date: parsed.data.invoice_date,
+        due_date: parsed.data.due_date,
+        description: packedDesc,
+      };
+
       const retry = existing
-        ? await supabase.from("invoices").update(fallbackValues).eq("id", existing.id)
-        : await supabase.from("invoices").insert({ ...fallbackValues, user_id: userId });
+        ? await supabase.from("invoices").update(coreValues).eq("id", existing.id).select()
+        : await supabase.from("invoices").insert({ ...coreValues, user_id: userId }).select();
+
       error = retry.error;
+      savedInvoice = retry.data?.[0];
     }
 
     setBusy(false);
@@ -123,6 +168,28 @@ export function InvoiceForm({
       );
       return;
     }
+
+    // Persist metadata locally for immediate client reliability
+    const invoiceId = existing?.id || savedInvoice?.id;
+    if (invoiceId) {
+      saveLocalInvoiceMeta(invoiceId, {
+        payment_details: parsed.data.payment_details,
+        client_notes: parsed.data.client_notes,
+        late_fee: parsed.data.late_fee,
+      });
+    }
+
+    // Also sync payment details to Auth user metadata if provided
+    if (parsed.data.payment_details && !defaultPaymentDetails) {
+      try {
+        await supabase.auth.updateUser({
+          data: { payment_details: parsed.data.payment_details },
+        });
+      } catch (authErr) {
+        console.warn("Could not sync user_metadata payment_details:", authErr);
+      }
+    }
+
     toast.success(existing ? "Invoice updated" : "Invoice saved — reminders are set");
     onDone();
   }

@@ -402,4 +402,67 @@ test("Reminder email templates - renders late fee notice in Stage 14 urgent noti
   assert.match(stage14WithLateFee.text, /LATE FEE NOTICE: A late fee of 5% late fee \(\$100\) applies/i);
 });
 
+test("Invoice metadata resilience - packs and unpacks extended attributes into description", async () => {
+  const { packInvoiceMetadata, unpackInvoiceMetadata, cleanDescription, resolveInvoice } =
+    await import("./src/lib/invoice-metadata.ts");
+
+  // 1. Pack metadata into description
+  const rawDesc = "Brand design & web development";
+  const packed = packInvoiceMetadata(rawDesc, {
+    payment_details: "https://paypal.me/SwayangSamal",
+    client_notes: "he pays after 10 days",
+    late_fee: "5% late fee",
+  });
+
+  assert.ok(packed);
+  assert.match(packed, /^Brand design & web development\n\[METADATA:\{.*\}\]$/);
+
+  // 2. Clean description strips tag
+  const cleaned = cleanDescription(packed);
+  assert.equal(cleaned, "Brand design & web development");
+
+  // 3. Unpack recovers all fields
+  const unpacked = unpackInvoiceMetadata(packed);
+  assert.equal(unpacked.cleanDescription, "Brand design & web development");
+  assert.equal(unpacked.payment_details, "https://paypal.me/SwayangSamal");
+  assert.equal(unpacked.client_notes, "he pays after 10 days");
+  assert.equal(unpacked.late_fee, "5% late fee");
+
+  // 4. Resolves invoice using unpacked metadata if DB columns are null
+  const baseInvoice = {
+    id: "inv_123",
+    client_name: "Acme Corp",
+    client_email: "billing@acme.com",
+    amount: 1200,
+    invoice_date: "2026-09-01",
+    due_date: "2026-09-15",
+    description: packed,
+    payment_details: null,
+    client_notes: null,
+    late_fee: null,
+    status: "unpaid",
+  };
+
+  const resolved = resolveInvoice(baseInvoice, "default_profile_payment");
+  assert.equal(resolved.description, "Brand design & web development");
+  assert.equal(resolved.payment_details, "https://paypal.me/SwayangSamal");
+  assert.equal(resolved.client_notes, "he pays after 10 days");
+  assert.equal(resolved.late_fee, "5% late fee");
+
+  // 5. Fallback core values strictly only contain guaranteed columns
+  const coreValues = {
+    client_name: baseInvoice.client_name,
+    client_email: baseInvoice.client_email,
+    amount: baseInvoice.amount,
+    invoice_date: baseInvoice.invoice_date,
+    due_date: baseInvoice.due_date,
+    description: packed,
+  };
+
+  assert.equal("payment_details" in coreValues, false);
+  assert.equal("client_notes" in coreValues, false);
+  assert.equal("late_fee" in coreValues, false);
+});
+
+
 
