@@ -4,10 +4,8 @@ export function SiteHeader({ right }: { right?: React.ReactNode }) {
   return (
     <div className="sticky top-0 z-10 border-b border-border bg-background/90 backdrop-blur">
       <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-3">
-        <Link to="/" className="flex items-center gap-2">
-          <span className="grid size-7 place-items-center rounded-full bg-brand text-sm font-bold text-paper">
-            P
-          </span>
+        <Link to="/" className="flex items-center gap-2.5">
+          <img src="/app-icon.png" alt="PayReminder" className="size-8 rounded-lg shadow-sm" />
           <span className="font-display text-lg font-semibold tracking-tight">PayReminder</span>
         </Link>
         {right}

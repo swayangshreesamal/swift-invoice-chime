@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <rect width="64" height="64" rx="14" fill="#064e3b" />
+  <rect x="14" y="16" width="30" height="36" rx="4" fill="#042f2e" stroke="#fbbf24" stroke-width="2" />
+  <line x1="20" y1="26" x2="38" y2="26" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" />
+  <line x1="20" y1="34" x2="34" y2="34" stroke="#fef08a" stroke-width="2" stroke-linecap="round" />
+  <line x1="20" y1="42" x2="30" y2="42" stroke="#fef08a" stroke-width="2" stroke-linecap="round" />
+  <!-- Chime Bell -->
+  <path d="M42 22C42 18.6863 39.3137 16 36 16C32.6863 16 30 18.6863 30 22V27L27 30H45L42 27V22Z" fill="#f59e0b" stroke="#fef3c7" stroke-width="1.5" />
+  <circle cx="36" cy="33" r="2" fill="#d97706" />
+</svg>
