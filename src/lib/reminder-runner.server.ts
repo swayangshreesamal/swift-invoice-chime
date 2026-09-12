@@ -147,36 +147,67 @@ export async function processAllOverdueReminders(
   };
 }
 
+export interface ManualInvoicePayload {
+  clientName?: string;
+  clientEmail?: string;
+  amount?: number;
+  dueDate?: string;
+  description?: string | null;
+  userId?: string;
+}
+
 /**
  * Manually dispatches a reminder for a specific invoice.
  */
 export async function sendManualInvoiceReminder(
   invoiceId: string,
   stage: ReminderStage,
+  payload?: ManualInvoicePayload,
   customClient?: ReturnType<typeof getSupabaseAdmin>,
 ): Promise<{ success: boolean; error?: string }> {
   const supabase = customClient || getSupabaseAdmin();
 
-  const { data: inv, error: invError } = await supabase
-    .from("invoices")
-    .select(
-      "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status",
-    )
-    .eq("id", invoiceId)
-    .maybeSingle();
+  let clientName = payload?.clientName;
+  let clientEmail = payload?.clientEmail;
+  let amount = payload?.amount;
+  let dueDate = payload?.dueDate;
+  let description = payload?.description;
+  let userId = payload?.userId;
 
-  if (invError || !inv) {
-    return { success: false, error: invError?.message || "Invoice not found" };
+  // If details were not provided in payload, query database
+  if (!clientEmail || !clientName || !dueDate || amount === undefined) {
+    const { data: inv, error: invError } = await supabase
+      .from("invoices")
+      .select(
+        "id, user_id, client_name, client_email, amount, invoice_date, due_date, description, status",
+      )
+      .eq("id", invoiceId)
+      .maybeSingle();
+
+    if (inv) {
+      clientName = inv.client_name;
+      clientEmail = inv.client_email;
+      amount = Number(inv.amount);
+      dueDate = inv.due_date;
+      description = inv.description;
+      userId = inv.user_id;
+    } else if (invError) {
+      return { success: false, error: invError.message };
+    }
   }
 
-  const overdue = daysOverdue(inv.due_date);
+  if (!clientEmail || !clientName || !dueDate || amount === undefined) {
+    return { success: false, error: "Invoice not found or missing client email." };
+  }
+
+  const overdue = daysOverdue(dueDate);
 
   const emailRes = await sendReminderEmail({
-    clientName: inv.client_name,
-    clientEmail: inv.client_email,
-    amount: Number(inv.amount),
-    dueDate: inv.due_date,
-    description: inv.description,
+    clientName,
+    clientEmail,
+    amount,
+    dueDate,
+    description,
     stage,
     daysOverdue: Math.max(overdue, stage),
   });
@@ -185,20 +216,22 @@ export async function sendManualInvoiceReminder(
     return { success: false, error: emailRes.error };
   }
 
-  // Record or update reminder status in database
-  const { error: insError } = await supabase.from("reminders").upsert(
-    {
-      invoice_id: inv.id,
-      user_id: inv.user_id,
-      stage,
-      status: "sent",
-      sent_at: new Date().toISOString(),
-    },
-    { onConflict: "invoice_id,stage" },
-  );
-
-  if (insError) {
-    console.warn("[ReminderRunner] Sent email but failed to save reminder log:", insError);
+  // Record or update reminder status in database if user_id is available
+  if (userId) {
+    try {
+      await supabase.from("reminders").upsert(
+        {
+          invoice_id: invoiceId,
+          user_id: userId,
+          stage,
+          status: "sent",
+          sent_at: new Date().toISOString(),
+        },
+        { onConflict: "invoice_id,stage" },
+      );
+    } catch (e) {
+      console.warn("[ReminderRunner] Could not upsert reminder record:", e);
+    }
   }
 
   return { success: true };

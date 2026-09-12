@@ -127,11 +127,39 @@ function Dashboard() {
     const key = `${invoice.id}-${stage}`;
     setSendingKey(key);
     try {
-      const res = await triggerManualReminder({ data: { invoiceId: invoice.id, stage } });
+      const res = await triggerManualReminder({
+        data: {
+          invoiceId: invoice.id,
+          stage,
+          clientName: invoice.client_name,
+          clientEmail: invoice.client_email,
+          amount: Number(invoice.amount),
+          dueDate: invoice.due_date,
+          description: invoice.description,
+          userId: invoice.user_id,
+        },
+      });
       if (!res.success) {
         toast.error(res.error || "Could not send reminder. Check email configuration.");
         return;
       }
+
+      // Upsert reminder status in Supabase so dashboard badge updates immediately
+      try {
+        await supabase.from("reminders").upsert(
+          {
+            invoice_id: invoice.id,
+            user_id: invoice.user_id,
+            stage,
+            status: "sent",
+            sent_at: new Date().toISOString(),
+          },
+          { onConflict: "invoice_id,stage" },
+        );
+      } catch (logErr) {
+        console.warn("Could not save reminder log to database:", logErr);
+      }
+
       toast.success(`${stage}d reminder successfully emailed to ${invoice.client_email}`);
       refresh();
     } catch (err: unknown) {
