@@ -391,6 +391,12 @@ export async function sendReminderEmail(
       subject,
       text,
       html,
+      headers: {
+        "List-Unsubscribe": `<mailto:${fromAddress}?subject=Unsubscribe>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        "X-Auto-Response-Suppress": "OOF, AutoReply",
+        "X-Priority": params.stage === 14 ? "1" : "3",
+      },
     });
 
     console.log(
