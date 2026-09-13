@@ -216,133 +216,149 @@ export function InvoiceForm({
   }
 
   return (
-    <form onSubmit={submit} className="card-paper space-y-3 p-4">
+    <form onSubmit={submit} className="card-elevated space-y-4 p-5 sm:p-7 shadow-sm border border-border/80">
+      <div className="border-b border-border/50 pb-3">
+        <h3 className="font-display text-lg font-bold text-foreground">
+          {existing ? "Edit Invoice Details" : "New Client Invoice"}
+        </h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {existing
+            ? "Update invoice amounts, dates, or payment settlement instructions."
+            : "Enter client details and your preferred payout methods."}
+        </p>
+      </div>
+
       <label className="block">
-        <span className="text-xs font-medium text-muted-foreground">Client name</span>
+        <span className="text-xs font-semibold text-foreground/90">Client name</span>
         <input
-          className="field-paper mt-1"
+          className="field-paper mt-1.5"
           value={clientName}
           onChange={(e) => setClientName(e.target.value)}
-          placeholder="Acme Bakery"
+          placeholder="e.g. Acme Studio or Sarah Jenkins"
         />
       </label>
+
       <label className="block">
-        <span className="text-xs font-medium text-muted-foreground">Client email</span>
+        <span className="text-xs font-semibold text-foreground/90">Client email</span>
         <input
           type="email"
-          className="field-paper mt-1"
+          className="field-paper mt-1.5"
           value={clientEmail}
           onChange={(e) => setClientEmail(e.target.value)}
-          placeholder="hello@acme.com"
+          placeholder="billing@client.com"
         />
       </label>
-      <div className="grid grid-cols-2 gap-3">
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
         <label className="block">
-          <span className="text-xs font-medium text-muted-foreground">Amount</span>
+          <span className="text-xs font-semibold text-foreground/90">Amount ($ USD)</span>
           <input
             type="number"
             step="0.01"
             min="0"
             inputMode="decimal"
-            className="field-paper mt-1"
+            className="field-paper mt-1.5 font-display font-semibold text-base"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="1500"
           />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-muted-foreground">Invoice date</span>
+          <span className="text-xs font-semibold text-foreground/90">Invoice date</span>
           <input
             type="date"
-            className="field-paper mt-1"
+            className="field-paper mt-1.5"
             value={invoiceDate}
             onChange={(e) => setInvoiceDate(e.target.value)}
           />
         </label>
       </div>
+
       <label className="block">
-        <span className="text-xs font-medium text-muted-foreground">Due date</span>
+        <span className="text-xs font-semibold text-foreground/90">Due date</span>
         <input
           type="date"
-          className="field-paper mt-1"
+          className="field-paper mt-1.5 font-medium"
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
         />
       </label>
+
       <label className="block">
-        <span className="text-xs font-medium text-muted-foreground">
-          Description <span className="opacity-70">(optional)</span>
+        <span className="text-xs font-semibold text-foreground/90">
+          Description <span className="font-normal text-muted-foreground">(optional)</span>
         </span>
         <input
-          className="field-paper mt-1"
+          className="field-paper mt-1.5"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Brand design & web development"
+          placeholder="e.g. Brand identity & website design package"
         />
       </label>
 
       {/* Payment Details Field */}
       <label className="block">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-            <span>Payment details <span className="opacity-70">(how client should pay)</span></span>
+          <span className="text-xs font-semibold text-foreground/90 flex items-center gap-1.5">
+            <span>Payment details <span className="font-normal text-muted-foreground">(how client should pay)</span></span>
           </span>
           {defaultPaymentDetails && !existing ? (
-            <span className="text-[10px] font-mono text-brand">Pre-filled from defaults</span>
+            <span className="text-[10px] font-mono text-brand font-medium">Pre-filled from defaults</span>
           ) : null}
         </div>
         <textarea
           rows={2}
-          className="field-paper mt-1 font-sans text-xs leading-relaxed"
+          className="field-paper mt-1.5 font-mono text-xs leading-relaxed"
           value={paymentDetails}
           onChange={(e) => setPaymentDetails(e.target.value)}
           placeholder="e.g. PayPal: https://paypal.me/yourname or UPI: yourname@okaxis or Bank: Wire Routing #123456, Acct #789012"
         />
         <p className="mt-1 text-[11px] text-muted-foreground">
-          Displayed in a prominent highlighted box in reminder emails. Multiple payment links will each get a button.
+          💡 Highlighted in reminder emails. URLs (like PayPal.me or Stripe) automatically generate 1-click payment buttons.
         </p>
       </label>
 
       {/* Late Fee Option */}
       <label className="block">
-        <span className="text-xs font-medium text-muted-foreground">
-          Late fee policy <span className="opacity-70">(optional — mentioned in final 14-day notice)</span>
+        <span className="text-xs font-semibold text-foreground/90">
+          Late fee policy <span className="font-normal text-muted-foreground">(optional — stated on 14-day notice)</span>
         </span>
         <input
-          className="field-paper mt-1"
+          className="field-paper mt-1.5"
           value={lateFee}
           onChange={(e) => setLateFee(e.target.value)}
-          placeholder="e.g. 5% late fee ($75) or $50 overdue fee"
+          placeholder="e.g. 5% late fee ($75) or $50 overdue charge"
         />
         <p className="mt-1 text-[11px] text-muted-foreground">
-          If left blank, no late fee is mentioned. If filled, clearly warns client in the final notice.
+          Warns the client if their invoice exceeds 14 days overdue.
         </p>
       </label>
 
       {/* Private Client Notes */}
       <label className="block">
-        <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-          <span>🔒 Private client notes <span className="opacity-70">(only visible to you)</span></span>
+        <span className="text-xs font-semibold text-foreground/90 flex items-center gap-1.5">
+          <span>🔒 Private client notes <span className="font-normal text-muted-foreground">(only visible to you)</span></span>
         </span>
         <input
-          className="field-paper mt-1"
+          className="field-paper mt-1.5"
           value={clientNotes}
           onChange={(e) => setClientNotes(e.target.value)}
-          placeholder="e.g. Prefers UPI; usually pays 10 days late; contact finance at accounting@client.com"
+          placeholder="e.g. Usually pays 5 days late; prefers UPI; contact finance at accounting@client.com"
         />
         <p className="mt-1 text-[11px] text-muted-foreground">
-          Never sent to the client. Kept securely on your dashboard to help you remember client quirks.
+          Saved privately on your dashboard to help you remember client tendencies. Never emailed to client.
         </p>
       </label>
-      <div className="flex gap-2">
-        <button type="submit" disabled={busy} className="btn-brand mt-1 flex-1 py-3.5 text-[15px]">
+
+      <div className="flex gap-2.5 pt-2">
+        <button type="submit" disabled={busy} className="btn-brand flex-1 py-3 text-sm font-semibold shadow-xs">
           {busy ? "Saving…" : existing ? "Save changes" : "Save & start reminders"}
         </button>
         {onCancel ? (
           <button
             type="button"
             onClick={onCancel}
-            className="btn-quiet mt-1 px-4 py-3.5 text-[15px]"
+            className="btn-quiet px-5 py-3 text-sm font-semibold"
           >
             Cancel
           </button>

@@ -511,42 +511,65 @@ ${payee}`;
           </div>
         ) : null}
 
-        <div className="rounded-3xl border border-border bg-card/70 p-5">
-          <div className="label-mono">Waiting to be paid</div>
-          <div className="mt-1 font-display text-[2.9rem] font-semibold leading-none tracking-tight">
+        {/* Total Outstanding Summary Card */}
+        <div className="card-elevated p-6 sm:p-8 bg-gradient-to-br from-card via-card to-brand-soft/20 border border-border/80 rounded-3xl relative overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+          <div className="absolute -right-10 -top-10 size-40 rounded-full bg-brand/5 blur-2xl pointer-events-none" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="size-2.5 rounded-full bg-brand animate-pulse" />
+              <span className="label-mono font-bold text-brand tracking-widest">Waiting to be paid</span>
+            </div>
+            <span className="rounded-full bg-brand-soft/80 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-brand">
+              {unpaid.length} open {unpaid.length === 1 ? "invoice" : "invoices"}
+            </span>
+          </div>
+          <div className="mt-3 font-display text-4xl sm:text-5xl lg:text-[3.5rem] font-bold leading-none tracking-[-0.03em] text-foreground">
             {formatMoney(outstanding)}
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Across {unpaid.length} open {unpaid.length === 1 ? "invoice" : "invoices"} · {paidCount}{" "}
-            paid
-          </p>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-border/60 text-xs">
+            <div className="flex items-center gap-4 text-muted-foreground">
+              <span className="flex items-center gap-1.5 font-medium">
+                <span className="size-2 rounded-full bg-amber-500" />
+                <span>{unpaid.length} Pending settlement</span>
+              </span>
+              <span className="flex items-center gap-1.5 font-medium">
+                <span className="size-2 rounded-full bg-sage" />
+                <span>{paidCount} Collected</span>
+              </span>
+            </div>
+            <span className="font-mono text-[11px] text-muted-foreground/80">
+              {invoices.length} {invoices.length === 1 ? "invoice" : "invoices"} total
+            </span>
+          </div>
         </div>
 
         {/* Default Payment Details Card */}
-        <div className="mt-4 rounded-2xl border border-border bg-card/70 p-4 transition-all">
+        <div className="card-paper p-5 sm:p-6 mt-4 shadow-xs border border-border/80 transition-all">
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <span className="text-xl">💳</span>
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-brand-soft text-brand text-lg shadow-2xs">
+                💳
+              </div>
               <div>
-                <h3 className="text-sm font-semibold tracking-tight">Your Default Payment Details</h3>
+                <h3 className="text-sm font-bold tracking-tight text-foreground">Default Payment Instructions</h3>
                 <p className="text-xs text-muted-foreground">
-                  Shown clearly in all reminder emails so clients know who and how to pay.
+                  Shown clearly in all reminder notices so clients have direct 1-click settlement options.
                 </p>
               </div>
             </div>
             <button
               type="button"
               onClick={() => setEditingProfile((prev) => !prev)}
-              className="rounded-lg border border-border px-2.5 py-1 font-mono text-xs text-brand hover:bg-brand-soft/40 transition-colors"
+              className="btn-quiet px-3.5 py-1.5 font-mono text-xs text-brand hover:bg-brand-soft/40 transition-colors shadow-2xs"
             >
               {editingProfile ? "Close" : defaultPaymentDetails ? "Edit details" : "+ Add details"}
             </button>
           </div>
 
           {editingProfile ? (
-            <form onSubmit={handleSaveProfileDefaults} className="mt-4 space-y-3 border-t border-border/50 pt-3">
+            <form onSubmit={handleSaveProfileDefaults} className="mt-4 space-y-3.5 border-t border-border/50 pt-3.5">
               <div>
-                <label className="block text-xs font-medium text-foreground">
+                <label className="block text-xs font-semibold text-foreground">
                   Your Name or Business Name <span className="text-muted-foreground font-normal">(Who to pay)</span>
                 </label>
                 <input
@@ -554,12 +577,12 @@ ${payee}`;
                   value={defaultFullName}
                   onChange={(e) => setDefaultFullName(e.target.value)}
                   placeholder="e.g. Alex Rivera or Rivera Design Studio"
-                  className="input-paper mt-1 w-full text-sm"
+                  className="field-paper mt-1.5"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-foreground">
+                <label className="block text-xs font-semibold text-foreground">
                   Default Payment Instructions <span className="text-muted-foreground font-normal">(How to pay)</span>
                 </label>
                 <textarea
@@ -567,9 +590,9 @@ ${payee}`;
                   value={defaultPaymentDetails}
                   onChange={(e) => setDefaultPaymentDetails(e.target.value)}
                   placeholder="e.g. PayPal: https://paypal.me/alexrivera or UPI: alex@okhdfcbank or Bank: Chase Checking Acct #123456789, Routing #987654321"
-                  className="input-paper mt-1 w-full font-mono text-xs leading-relaxed"
+                  className="field-paper mt-1.5 font-mono text-xs leading-relaxed"
                 />
-                <p className="mt-1 text-[11px] text-muted-foreground">
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
                   💡 Tip: If you include a link (e.g. https://paypal.me/... or Stripe payment link), reminder emails will include a 1-click &ldquo;Pay Online Now&rdquo; button!
                 </p>
               </div>
@@ -578,51 +601,56 @@ ${payee}`;
                 <button
                   type="button"
                   onClick={() => setEditingProfile(false)}
-                  className="btn-quiet px-3 py-1.5 text-xs"
+                  className="btn-quiet px-3.5 py-2 text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={savingProfile}
-                  className="btn-brand px-4 py-1.5 text-xs font-medium"
+                  className="btn-brand px-4 py-2 text-xs font-semibold shadow-xs"
                 >
                   {savingProfile ? "Saving…" : "Save Default Details"}
                 </button>
               </div>
             </form>
           ) : (
-            <div className="mt-3 rounded-xl bg-muted/40 p-3 border border-border/30 text-xs">
+            <div className="mt-4 rounded-xl bg-muted/30 p-4 border border-border/40 text-xs space-y-2">
               <div className="flex flex-wrap items-baseline gap-2">
-                <span className="font-semibold text-foreground">Who to pay:</span>
-                <span className="text-muted-foreground font-medium">
+                <span className="font-semibold text-foreground/80 font-mono text-[11px] uppercase tracking-wider">
+                  Who to pay:
+                </span>
+                <span className="font-semibold text-foreground">
                   {defaultFullName || user?.email?.split("@")[0] || "PayReminder Freelancer"}
                 </span>
               </div>
-              <div className="mt-1.5">
-                <span className="font-semibold text-foreground">How to pay:</span>
+              <div className="pt-2 border-t border-border/30">
+                <span className="font-semibold text-foreground/80 font-mono text-[11px] uppercase tracking-wider">
+                  Payment Details:
+                </span>
                 {defaultPaymentDetails ? (
-                  <div className="mt-1 whitespace-pre-wrap rounded bg-background/80 p-2 font-mono text-[11px] text-foreground border border-border/40">
+                  <div className="mt-1.5 whitespace-pre-wrap rounded-lg bg-card p-3 font-mono text-xs text-foreground border border-border/50 shadow-2xs leading-relaxed">
                     {defaultPaymentDetails}
                   </div>
                 ) : (
-                  <span className="ml-1 text-muted-foreground italic">
+                  <p className="mt-1 text-muted-foreground italic text-xs">
                     No payment details set yet. Click &ldquo;+ Add details&rdquo; to add your PayPal, UPI, or bank wire.
-                  </span>
+                  </p>
                 )}
               </div>
             </div>
           )}
         </div>
 
-        <div className="mt-6 flex items-baseline justify-between">
-          <h2 className="font-display text-xl font-semibold tracking-tight">Your invoices</h2>
-          <div className="flex items-center gap-3">
+        {/* Invoices Header Bar */}
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-2xl font-bold tracking-tight text-foreground">Your invoices</h2>
+          <div className="flex items-center gap-2.5">
             {unpaid.length > 0 ? (
               <button
                 type="button"
                 disabled={checkingBatch}
-                className="font-mono text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                className="rounded-lg border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 shadow-2xs"
                 onClick={handleBatchCheck}
               >
                 {checkingBatch ? "Checking…" : "⚡ Check & send"}
@@ -631,7 +659,7 @@ ${payee}`;
             <button
               type="button"
               disabled={testingEmail}
-              className="font-mono text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              className="rounded-lg border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 shadow-2xs"
               onClick={handleSendTest}
               title="Send a sample email to verify delivery to your inbox"
             >
@@ -639,7 +667,7 @@ ${payee}`;
             </button>
             {!adding && !editing ? (
               <button
-                className="font-mono text-xs text-brand"
+                className="btn-brand px-3.5 py-1.5 text-xs font-semibold shadow-xs"
                 onClick={() => {
                   if (atFreeLimit) {
                     toast.error("Free plan holds 3 invoices — upgrade to Pro for unlimited.");
@@ -655,7 +683,7 @@ ${payee}`;
         </div>
 
         {adding ? (
-          <div className="mt-3">
+          <div className="mt-4">
             <InvoiceForm
               userId={user.id}
               defaultPaymentDetails={profileQuery.data?.payment_details || defaultPaymentDetails}
@@ -669,7 +697,7 @@ ${payee}`;
         ) : null}
 
         {editing ? (
-          <div className="mt-3">
+          <div className="mt-4">
             <InvoiceForm
               userId={user.id}
               existing={editing}
@@ -683,10 +711,41 @@ ${payee}`;
           </div>
         ) : null}
 
-        <div className="mt-3 space-y-3">
+        {/* Invoice Cards List */}
+        <div className="mt-4 space-y-4">
           {invoices.length === 0 && !adding ? (
-            <div className="card-paper p-5 text-sm text-muted-foreground">
-              No invoices yet. Adding one takes about 30 seconds.
+            <div className="card-paper p-8 sm:p-12 text-center border-dashed border-2 border-border/80 bg-card/60 shadow-xs">
+              <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-brand-soft text-brand text-2xl shadow-xs">
+                🧾
+              </div>
+              <h3 className="mt-4 font-display text-xl font-bold text-foreground">
+                No invoices added yet
+              </h3>
+              <p className="mx-auto mt-2 max-w-sm text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                Add your first client invoice in under 30 seconds. PayReminder will automatically track the due date and politely follow up if payment is delayed.
+              </p>
+              <div className="mt-6 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (atFreeLimit) {
+                      toast.error("Free plan holds 3 invoices — upgrade to Pro for unlimited.");
+                      return;
+                    }
+                    setAdding(true);
+                  }}
+                  className="btn-brand px-6 py-3 text-sm font-semibold shadow-md hover:shadow-lg transition-all"
+                >
+                  + Add your first invoice
+                </button>
+              </div>
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-4 text-[11px] text-muted-foreground font-mono">
+                <span>✓ 3 Invoices Free</span>
+                <span>·</span>
+                <span>✓ 0% Platform Fee</span>
+                <span>·</span>
+                <span>✓ Direct Payments</span>
+              </div>
             </div>
           ) : null}
 
@@ -698,31 +757,42 @@ ${payee}`;
             const isPaid = invoice.status === "paid";
 
             return (
-              <div key={invoice.id} className="card-paper p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-[15px] font-semibold">{invoice.client_name}</p>
+              <div
+                key={invoice.id}
+                className="card-paper p-5 sm:p-6 transition-all duration-200 hover:shadow-md hover:border-border/90"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <p className="text-base sm:text-lg font-bold tracking-tight text-foreground">
+                        {invoice.client_name}
+                      </p>
                       {isPaid ? (
-                        <span className="rounded bg-sage-soft px-1.5 py-0.5 font-mono text-[10px] text-sage">
+                        <span className="rounded-full bg-sage-soft px-2.5 py-0.5 font-mono text-[10px] font-bold text-sage uppercase tracking-wider">
                           Paid
                         </span>
                       ) : sent.length > 0 ? (
-                        <span className="rounded bg-brand-soft px-1.5 py-0.5 font-mono text-[10px] text-brand">
+                        <span className="rounded-full bg-brand-soft px-2.5 py-0.5 font-mono text-[10px] font-bold text-brand uppercase tracking-wider">
                           Sent · {sent[0]!.stage}d
+                        </span>
+                      ) : overdue > 0 ? (
+                        <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-destructive uppercase tracking-wider">
+                          Overdue {overdue}d
                         </span>
                       ) : null}
                     </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
+
+                    <p className="text-xs text-muted-foreground font-normal">
                       {invoice.description || invoice.client_email}
                     </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-muted-foreground">
-                        Due {formatDate(invoice.due_date)}
+
+                    <div className="pt-1 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground font-medium">
+                        <span>📅</span> Due {formatDate(invoice.due_date)}
                       </span>
                       {invoice.payment_details ? (
                         <span
-                          className="rounded bg-muted/80 px-1.5 py-0.5 font-mono text-[10px] text-foreground/80 border border-border/50"
+                          className="rounded-md bg-muted/80 px-2 py-0.5 font-mono text-[10px] text-foreground/80 border border-border/50 font-medium"
                           title="Custom payment details specified for this invoice"
                         >
                           💳 Custom payment info
@@ -730,7 +800,7 @@ ${payee}`;
                       ) : null}
                       {invoice.late_fee ? (
                         <span
-                          className="rounded bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] text-amber-700 dark:text-amber-400 border border-amber-500/20"
+                          className="rounded-md bg-amber-500/10 px-2 py-0.5 font-mono text-[10px] text-amber-700 dark:text-amber-400 border border-amber-500/30 font-medium"
                           title={`Late fee specified: ${invoice.late_fee}`}
                         >
                           ⚡ Late fee: {invoice.late_fee}
@@ -739,52 +809,59 @@ ${payee}`;
                     </div>
 
                     {invoice.client_notes ? (
-                      <div className="mt-2 rounded-lg bg-muted/30 px-2.5 py-1.5 text-[11px] text-muted-foreground border border-border/30 flex items-start gap-1.5">
-                        <span className="text-[11px] select-none">🔒</span>
+                      <div className="mt-2.5 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground border border-border/40 flex items-start gap-2">
+                        <span className="text-xs select-none">🔒</span>
                         <span>
-                          <strong className="text-foreground/80 font-medium">Private note:</strong>{" "}
+                          <strong className="text-foreground/90 font-semibold">Private note:</strong>{" "}
                           {invoice.client_notes}
                         </span>
                       </div>
                     ) : null}
                   </div>
+
                   <div className="text-right">
-                    <p className="font-display text-lg font-semibold">
+                    <p className="font-display text-xl sm:text-2xl font-bold tracking-tight text-foreground">
                       {formatMoney(Number(invoice.amount))}
                     </p>
                     {!isPaid && overdue > 0 ? (
-                      <p className="mt-0.5 text-[11px] font-medium text-brand">
-                        Overdue {overdue}d
+                      <p className="mt-0.5 text-xs font-semibold text-destructive">
+                        {overdue} days past due
+                      </p>
+                    ) : !isPaid ? (
+                      <p className="mt-0.5 text-xs text-muted-foreground font-mono">
+                        Awaiting due date
                       </p>
                     ) : null}
                   </div>
                 </div>
 
                 {sent.length > 0 ? (
-                  <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                    Reminders sent:{" "}
-                    {sent
-                      .map((r) => `${r.stage}d`)
-                      .reverse()
-                      .join(" · ")}
-                  </p>
+                  <div className="mt-3 rounded-lg bg-muted/20 px-3 py-1.5 border border-border/30">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                      Reminders dispatched:{" "}
+                      {sent
+                        .map((r) => `${r.stage}d notice`)
+                        .reverse()
+                        .join(" → ")}
+                    </p>
+                  </div>
                 ) : null}
 
                 {!isPaid ? (
-                  <div className="mt-3 border-t border-border/50 pt-2.5 space-y-2">
+                  <div className="mt-4 border-t border-border/60 pt-3 space-y-2.5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-mono text-[11px] text-muted-foreground">
-                        Send email reminder:
+                      <span className="font-mono text-[11px] text-muted-foreground font-medium">
+                        Automatic reminder notice:
                       </span>
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"
                           disabled={sendingKey === `${invoice.id}-3`}
                           onClick={() => handleSendSingle(invoice, 3)}
-                          className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors disabled:opacity-50 ${
+                          className={`rounded-lg border px-2.5 py-1 font-mono text-[11px] font-semibold transition-all disabled:opacity-50 ${
                             sent.some((r) => r.stage === 3)
-                              ? "border-brand/40 bg-brand-soft/40 text-brand font-medium"
-                              : "border-border hover:bg-muted text-foreground"
+                              ? "border-brand/40 bg-brand-soft/60 text-brand shadow-2xs"
+                              : "border-border hover:bg-muted text-foreground shadow-2xs"
                           }`}
                           title="3 days overdue reminder (Polite)"
                         >
@@ -794,10 +871,10 @@ ${payee}`;
                           type="button"
                           disabled={sendingKey === `${invoice.id}-7`}
                           onClick={() => handleSendSingle(invoice, 7)}
-                          className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors disabled:opacity-50 ${
+                          className={`rounded-lg border px-2.5 py-1 font-mono text-[11px] font-semibold transition-all disabled:opacity-50 ${
                             sent.some((r) => r.stage === 7)
-                              ? "border-amber-500/40 bg-amber-500/10 text-amber-600 font-medium"
-                              : "border-border hover:bg-muted text-foreground"
+                              ? "border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-400 shadow-2xs"
+                              : "border-border hover:bg-muted text-foreground shadow-2xs"
                           }`}
                           title="7 days overdue reminder (Firmer)"
                         >
@@ -807,10 +884,10 @@ ${payee}`;
                           type="button"
                           disabled={sendingKey === `${invoice.id}-14`}
                           onClick={() => handleSendSingle(invoice, 14)}
-                          className={`rounded-md border px-2 py-1 font-mono text-[11px] transition-colors disabled:opacity-50 ${
+                          className={`rounded-lg border px-2.5 py-1 font-mono text-[11px] font-semibold transition-all disabled:opacity-50 ${
                             sent.some((r) => r.stage === 14)
-                              ? "border-destructive/40 bg-destructive/10 text-destructive font-medium"
-                              : "border-border hover:bg-muted text-foreground"
+                              ? "border-destructive/40 bg-destructive/15 text-destructive shadow-2xs"
+                              : "border-border hover:bg-muted text-foreground shadow-2xs"
                           }`}
                           title="14 days overdue reminder (Final notice)"
                         >
@@ -824,7 +901,7 @@ ${payee}`;
                       <button
                         type="button"
                         onClick={() => handleOpenGmail(invoice)}
-                        className="hover:text-brand hover:underline transition-colors flex items-center gap-1"
+                        className="hover:text-brand hover:underline transition-colors flex items-center gap-1 font-medium"
                         title="Open pre-filled draft in your personal Gmail (100% inbox deliverability)"
                       >
                         ✉ Gmail
@@ -833,7 +910,7 @@ ${payee}`;
                       <button
                         type="button"
                         onClick={() => handleOpenWhatsApp(invoice)}
-                        className="hover:text-emerald-600 hover:underline transition-colors flex items-center gap-1"
+                        className="hover:text-emerald-600 hover:underline transition-colors flex items-center gap-1 font-medium"
                         title="Send reminder via WhatsApp"
                       >
                         💬 WhatsApp
@@ -842,7 +919,7 @@ ${payee}`;
                       <button
                         type="button"
                         onClick={() => handleCopyReminder(invoice)}
-                        className="hover:text-foreground hover:underline transition-colors flex items-center gap-1"
+                        className="hover:text-foreground hover:underline transition-colors flex items-center gap-1 font-medium"
                         title="Copy reminder text to clipboard"
                       >
                         📋 Copy
@@ -851,18 +928,18 @@ ${payee}`;
                   </div>
                 ) : null}
 
-                <div className="mt-3 flex gap-2">
+                <div className="mt-4 flex gap-2.5 pt-1">
                   {isPaid ? (
                     <button
                       onClick={() => markUnpaid(invoice)}
-                      className="btn-quiet flex-1 py-2.5 text-[13px]"
+                      className="btn-quiet flex-1 py-2.5 text-xs font-semibold"
                     >
                       Mark as unpaid
                     </button>
                   ) : (
                     <button
                       onClick={() => markPaid(invoice)}
-                      className="btn-brand flex-1 py-2.5 text-[13px]"
+                      className="btn-brand flex-1 py-2.5 text-xs font-semibold shadow-xs"
                     >
                       Mark as paid
                     </button>
@@ -872,13 +949,13 @@ ${payee}`;
                       setAdding(false);
                       setEditing(invoice);
                     }}
-                    className="btn-quiet px-3 py-2.5 text-[13px]"
+                    className="btn-quiet px-4 py-2.5 text-xs font-semibold"
                   >
                     Edit
                   </button>
                   <button
                     onClick={() => remove(invoice)}
-                    className="btn-quiet px-3 py-2.5 text-[13px] text-muted-foreground"
+                    className="btn-quiet px-4 py-2.5 text-xs font-semibold text-muted-foreground hover:text-destructive hover:border-destructive/30"
                   >
                     Delete
                   </button>
