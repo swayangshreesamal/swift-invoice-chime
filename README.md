@@ -44,12 +44,12 @@ npm install
 Create a `.env` or `.env.local` file with:
 
 ```env
-SUPABASE_URL="https://c--b6cb859b-e2fa-4610-9ae8-d4f367c75dd4-prod.lovable.cloud"
-SUPABASE_PUBLISHABLE_KEY="sb_publishable_Qf_4_y0Wcb8OpREEqVfngw_bHkMm2El"
-SUPABASE_PROJECT_ID="resvgmfhbhkvecuhnqqz"
-VITE_SUPABASE_URL="https://c--b6cb859b-e2fa-4610-9ae8-d4f367c75dd4-prod.lovable.cloud"
-VITE_SUPABASE_PUBLISHABLE_KEY="sb_publishable_Qf_4_y0Wcb8OpREEqVfngw_bHkMm2El"
-VITE_SUPABASE_PROJECT_ID="resvgmfhbhkvecuhnqqz"
+SUPABASE_URL="https://kjquacmthopeqadkebfp.supabase.co"
+SUPABASE_PUBLISHABLE_KEY="sb_publishable_zclu4vPS6tQS1PGD8iyDvA_D3AA7uJr"
+SUPABASE_PROJECT_ID="kjquacmthopeqadkebfp"
+VITE_SUPABASE_URL="https://kjquacmthopeqadkebfp.supabase.co"
+VITE_SUPABASE_PUBLISHABLE_KEY="sb_publishable_zclu4vPS6tQS1PGD8iyDvA_D3AA7uJr"
+VITE_SUPABASE_PROJECT_ID="kjquacmthopeqadkebfp"
 SMTP_USER="payreminder.help@gmail.com"
 SMTP_PASS="your-app-password"
 ```
